@@ -1,0 +1,17 @@
+module lmsesp
+author Ste7an
+version 1 0 
+description 'Extra system functions for Serial communication and ESP32 version
+This is incorporated in a MicroPup firmware version for LMS-ESP32'
+
+  spec 'r' '[serial:readNr]' 'serial read _ bytes' 'num' 1
+  spec 'r' '[serial:available]' 'available serial bytes'
+  spec 'r' '[serial:espversion]' 'get esp version'
+  spec ' ' '[io:outputstring]' 'IO outputstring _' 'str' 'debug'
+  spec 'r' '[tft:tftTouchGesture]' 'gesture'
+  spec 'r' 'function named' 'function named _ exists?' 'str' 'function'
+
+to 'function named' functionname {
+  return (callCustomReporter '[vars:functionExists]' ('[data:makeList]' functionname))
+}
+

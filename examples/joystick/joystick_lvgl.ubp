@@ -1,0 +1,389 @@
+module main
+author unknown
+version 1 0 
+description ''
+variables x y 
+
+  spec 'r' 'joy' 'joy'
+
+to joy {
+  local 'bytes' ('[data:newByteArray]' 3)
+  '[sensors:i2cRead]' (hexToInt '52') bytes
+  x = (at 1 bytes)
+  y = (at 2 bytes)
+  return ('[data:makeList]' (at 1 bytes) (at 2 bytes) (at 3 bytes))
+}
+
+script 225 62 {
+whenStarted
+init
+forever {
+  process
+}
+}
+
+script 66 215 {
+to joy {}
+}
+
+script 62 535 {
+whenStarted
+'enable lvgl' true true
+'[tft:LVGLaddobj]' 'arc' 'X'
+'[tft:LVGLsetattribute]' 'range' 'X' 0 256
+'[tft:LVGLsetsize]' 'X' 120 120
+'[tft:LVGLsetpos]' 'X' 0 40
+'[tft:LVGLaddobj]' 'arc' 'Y'
+'[tft:LVGLsetattribute]' 'range' 'Y' 0 256
+'[tft:LVGLsetsize]' 'Y' 120 120
+'[tft:LVGLsetpos]' 'Y' 140 40
+forever {
+  '[tft:LVGLsetval]' 'X' x
+  '[tft:LVGLsetval]' 'Y' y
+}
+}
+
+
+module LVGL Output
+author Ste7an
+version 1 10 
+choices attribute_types range rotation angles brightness 'line width' animation digits increment decrement points length 'tick count' 'major tick every' 'show labels' 'scale mode' 'button ctrl' width focused flags 
+choices style_types 'text font' 'text color' 'bg color' 'bg opa' 'border width' 'border color' radius 'shadow width' 'shadow offset x' 'shadow offset y' 'shadow opa' width 'line width' 'line color' 
+choices obj_types arc bar led list roller scale screen slider spinbox spinner style switch tabview tileview keyboard textarea 
+choices symbols bullet audio video list ok close power settings home download drive refresh mute volume_mid volume_max image tint prev play pause stop next eject left right plus minus eye_open eye_close warning shuffle up down loop directory upload call cut copy save bars envelope charge paste bell keyboard gps file wifi battery_full battery_3 battery_2 battery_1 battery_empty usb bluetooth trash edit backspace sd_card new_line 
+choices chart_update_mode shift circular 
+choices scale_modes 'hor top' 'hor bottom' 'ver left' 'ver right' 'round inner' 'round outer' last 
+choices chart_type line bar scatter 
+choices scroll_dirs none hor ver all 
+description 'LVGL support for MicroBlocks'
+variables _lvgl_call_backs 
+
+  spec ' ' 'enable lvgl' 'enable lvgl _ delete all _' 'bool bool' true true
+  spec ' ' '[tft:LVGLaddbtn]' 'button _ : scale _ : text _ : parent _' 'str num str str' 'button' 1 'button' 'lv_scr_act'
+  spec ' ' '[tft:LVGLaddlabel]' 'label _ : scale _ : text _ : parent _' 'str num str str' 'label' 1 'label' 'lv_scr_act'
+  spec ' ' '[tft:LVGLaddobj]' 'add _ as _ : parent _' 'str.obj_types str str' 'arc' '' 'lv_scr_act'
+  spec ' ' '[tft:LVGLsetpos]' 'set position _ x _ y _' 'str num num' '' 100 100
+  spec ' ' '[tft:LVGLsetsize]' 'set size _ width _ height _' 'str num num' '' 100 10
+  spec ' ' '[tft:LVGLsetval]' 'set value _ value _' 'str num' '' 10
+  spec 'r' '[tft:LVGLgetval]' 'get value _' 'str' ''
+  spec ' ' '[tft:LVGLsettext]' 'set text _ text _ : scale _' 'str str auto' '' 'text' 1
+  spec ' ' '[tft:LVGLsetcolor]' 'set color _ background _ : second _ : third _' 'str color color color' ''
+  spec 'r' 'lvgl_color' '_' 'color'
+  spec 'r' 'makeColor' 'color r _ g _ b _ (0-255)' 'num num num' 0 100 100
+  space
+  spec 'r' '[tft:LVGLevent]' 'event available'
+  spec 'r' '[tft:LVGLgetevent]' 'get event'
+  space
+  spec 'r' 'screen' 'screen'
+  spec 'r' 'symbol' 'symbol _' 'str.symbols' 'bullet'
+  spec ' ' '[tft:LVGLsetparent]' 'set _ parent _ : states _ : parts _' 'str str num num' '' '' 0 0
+  spec 'r' '[tft:LVGLgetallobjs]' 'get all objects'
+  spec ' ' '[tft:LVGLdelobj]' 'delete object _' 'str' ''
+  spec ' ' 'delete_all_objects' 'delete all objects'
+  spec ' ' '[tft:LVGLaddimg]' 'image path _  as  _ : parent _' 'str str str' '' 'img' 'lv_scr_act'
+  spec ' ' '[tft:LVGLaddfont]' 'font path _  as  _' 'str str' '' ''
+  spec ' ' '[tft:LVGLsetattribute]' 'set attribute _ of _ first _ : second _' 'str.attribute_types str auto auto' 'range' '' '' ''
+  spec ' ' '[tft:LVGLsetstyle]' 'set style _ of _ to _' 'str.style_types str auto' 'text font' '' ''
+  spec 'r' 'set_states' 'state pressed _ : checked _ : scrolled _' 'bool bool bool bool' true false false
+  spec 'r' 'set_parts' 'parts selected _ : indicator _ : knob _ : #BR# items _ : scrollbar _' 'bool bool bool bool bool' true false false false false
+  spec 'r' 'set_scale_mode' 'scale mode _' 'str.scale_modes' 'hor top'
+  spec 'r' 'set_button_ctrl' 'button ctrl checkable _ : checked _ : hidden _ : disabled _' 'bool bool bool bool' true false false false
+  spec 'r' 'set_flag' 'behaviour flags hidden _ : clickable _ : checkable _ : scrollable : _ : scroll one _' 'bool bool bool bool bool' false false false false false
+  spec ' ' '[tft:LVGLsetscroll]' 'set scroll direction of _ to _' 'str str.scroll_dirs' '' 'none'
+  spec ' ' '[tft:LVGLloadscreen]' 'load screen _' 'str' ''
+  spec ' ' '[tft:LVGLaddtab]' 'tab _ parent _' 'str str' 'tab' ''
+  spec ' ' '[tft:LVGLaddbuttonmatrix]' 'button matrix _ elements _ : parent _' 'str auto str' '' 'aList' 'lv_scr_act'
+  spec ' ' '[tft:LVGLaddchart]' 'chart _ type _ update mode _ : parent _' 'str str.chart_type str.chart_update_mode str' '' 'line' 'shift' 'lv_scr_act'
+  spec ' ' '[tft:LVGLaddseries]' 'add series _ chart _ color _' 'str str color' '' ''
+  spec ' ' '[tft:LVGLsetnextvalue]' 'add value to series _ from chart _ value _ : value2 _' 'str str num num' '' '' 0 0
+  spec ' ' '[tft:LVGLaddtile]' 'tile _ parent _ col _ row _ #BR# L _ R _ T _ B _' 'str str num num bool bool bool bool' 'tile' '' 0 0 false false false false
+  spec 'r' '[tft:LVGLpsram]' 'get PSRAM'
+  spec ' ' 'init_callback' 'init callback'
+  spec ' ' 'add_callback' 'add callback _ : function _' 'str str' '' ''
+  spec ' ' 'handle_event' 'handle event'
+
+to add_callback obj function {
+  if (not (isType _lvgl_call_backs 'list')) {_lvgl_call_backs = ('[data:makeList]')}
+  if ((pushArgCount) < 2) {
+    '[data:addLast]' ('[data:makeList]' obj obj) _lvgl_call_backs
+  } else {
+    '[data:addLast]' ('[data:makeList]' obj function) _lvgl_call_backs
+  }
+}
+
+to delete_all_objects {
+  local 'all_objects' ('[tft:LVGLgetallobjs]')
+  for i (size all_objects) {
+    if ((at i all_objects) != '!main_screen_default') {'[tft:LVGLdelobj]' (at i all_objects)}
+  }
+  comment 'load original main screen that is stored'
+  '[tft:LVGLloadscreen]' '!main_screen_default'
+}
+
+to 'enable lvgl' enable delete {
+  callCustomCommand '[tft:LVGLon]' ('[data:makeList]' enable)
+  if delete {
+    delete_all_objects
+  }
+}
+
+to handle_event {
+  if ('[tft:LVGLevent]') {
+    local 'var' 1
+    local 'event' ('[tft:LVGLgetevent]')
+    repeatUntil (or (var > (size _lvgl_call_backs)) (event == (at 1 (at var _lvgl_call_backs)))) {
+      var += 1
+    }
+    if (var <= (size _lvgl_call_backs)) {
+      callCustomCommand (at 2 (at var _lvgl_call_backs))
+    }
+  }
+}
+
+to init_callback {
+  _lvgl_call_backs = 0
+}
+
+to lvgl_color color {
+  return color
+}
+
+to makeColor r g b {
+  r = (maximum 0 (minimum r 255))
+  g = (maximum 0 (minimum g 255))
+  b = (maximum 0 (minimum b 255))
+  return ((r << 16) | ((g << 8) | b))
+}
+
+to screen {
+  return 'lv_scr_act'
+}
+
+to set_button_ctrl checkable checked hidden disabled {
+  return (sum (ifExpression checkable (hexToInt '80') 0) (ifExpression checked (hexToInt '100') 0) (ifExpression hidden (hexToInt '10') 0) (ifExpression disabled (hexToInt '40') 0))
+}
+
+to set_flag hidden clickable checkable scrollable scroll_one {
+  return (sum (ifExpression hidden (hexToInt '1') 0) (ifExpression clickable (hexToInt '2') 0) (ifExpression checkable (hexToInt '8') 0) (ifExpression scrollable (hexToInt '10') 0) (ifExpression scroll_one (hexToInt '80') 0))
+}
+
+to set_parts selected indicator knob items scrollbar {
+  return (sum (ifExpression scrollbar (hexToInt '10000') 0) (ifExpression indicator (hexToInt '20000') 0) (ifExpression knob (hexToInt '30000') 0) (ifExpression selected (hexToInt '40000') 0) (ifExpression items (hexToInt '50000') 0))
+}
+
+to set_scale_mode mode {
+  if (mode == 'hor top') {
+    return 0
+  } (mode == 'hor bottom') {
+    return 1
+  } (mode == 'ver left') {
+    return 2
+  } (mode == 'ver right') {
+    return 4
+  } (mode == 'round inner') {
+    return 8
+  } (mode == 'round outer') {
+    return 16
+  } else {
+    return 0
+  }
+}
+
+to set_states pressed checked scrolled {
+  return (sum (ifExpression checked 1 0) (ifExpression pressed (hexToInt '20') 0) (ifExpression scrolled (hexToInt '40') 0))
+}
+
+to symbol symbolname {
+  return ('[data:unicodeString]' (callCustomReporter '[tft:LVGLgetsymbol]' ('[data:makeList]' symbolname)))
+}
+
+
+module microremote
+author Ste7an
+version 1 0 
+description 'Communication library with MicroBlocks using the hubs
+
+UARTDevice.'
+variables time 
+
+  spec 'r' '_encode' 'encode _ data _' 'auto auto' 10 '10'
+  spec 'r' '_read serial' 'read serial'
+  spec 'r' '_decode' 'decode _' 'auto' '10'
+  spec 'r' 'call' 'call _ data _' 'auto auto' '10' '10'
+  spec 'r' '_receive command' 'receive command'
+  spec ' ' '_send command' 'send command _ data _' 'auto auto' '10' '10'
+  spec ' ' 'process' 'process'
+  spec ' ' 'flush' 'flush'
+  spec ' ' 'init' 'init'
+
+to '_decode' encoded {
+  local 'tot_len' (size encoded)
+  local 'var_list' ('[data:makeList]')
+  local 'p' 1
+  local 'l' (at p encoded)
+  local 'cmd' ('[data:newByteArray]' l)
+  for i l {
+    atPut i cmd (at ((i + p) - 0) encoded)
+  }
+  cmd = ('[data:convertType]' cmd 'string')
+  p += (l + 1)
+  repeatUntil (p > tot_len) {
+    local 'type' (at p encoded)
+    p += 1
+    l = (at p encoded)
+    local 'bytes' ('[data:newByteArray]' l)
+    for i l {
+      atPut i bytes (at ((i + p) - 0) encoded)
+    }
+    comment '78 = N -> number'
+    if (type == 78) {
+      bytes = ('[data:convertType]' ('[data:convertType]' bytes 'string') 'number')
+    } (type == 83) {
+      comment '83 = S -> string'
+      bytes = ('[data:convertType]' bytes 'string')
+    } (type == 65) {
+      comment '65 = A -> bytesarray'
+    } (type == 66) {
+      comment '66 = B -> boolean'
+      bytes = ('[data:convertType]' (at 1 bytes) 'boolean')
+    } else {
+    }
+    p += (l + 1)
+    var_list = ('[data:join]' var_list ('[data:makeList]' bytes))
+  }
+  return ('[data:makeList]' cmd var_list)
+}
+
+to '_encode' cmd list {
+  local 'list_len' (size list)
+  local 'bytes' ('[data:newByteArray]' 0)
+  local 'all_bytes' ('[data:newByteArray]' 0)
+  for i list_len {
+    local 'var' (at i list)
+    if (isType var 'number') {
+      comment '78 = N -> number'
+      local 'str' ('[data:convertType]' var 'string')
+      bytes = ('[data:join]' ('[data:asByteArray]' ('[data:makeList]' 78 (size str))) ('[data:convertType]' str 'byte array'))
+    } (isType var 'boolean') {
+      if var {
+        local 'bool' 1
+      } else {
+        local 'bool' 0
+      }
+      comment '66 = B -> boolean'
+      bytes = ('[data:asByteArray]' ('[data:makeList]' 66 1 bool))
+    } (isType var 'string') {
+      comment '83 = S -> string'
+      bytes = ('[data:join]' ('[data:asByteArray]' ('[data:makeList]' 83 (size var))) ('[data:convertType]' var 'byte array'))
+    } (isType var 'list') {
+      bytes = 0
+    } (isType var 'byte array') {
+      comment '65 = A -> bytesarray'
+      bytes = ('[data:join]' ('[data:asByteArray]' ('[data:makeList]' 65 (size var))) var)
+    }
+    all_bytes = ('[data:join]' all_bytes bytes)
+  }
+  all_bytes = ('[data:join]' ('[data:asByteArray]' (size cmd)) ('[data:asByteArray]' cmd) all_bytes)
+  return all_bytes
+}
+
+to '_read serial' {
+  local 'byte' 0
+  local 'PREAMBLE' ('[data:asByteArray]' '<$MU')
+  local 'start_time' (millisOp)
+  local 'tot_len' 0
+  waitUntil (or (((millisOp) - start_time) > 1000) (('[serial:available]') > 0))
+  if (('[serial:available]') > 0) {
+    tot_len = (at 1 ('[serial:readNr]' 1))
+  } else {
+    local 'tmp' ('[serial:read]')
+    return ('[data:newByteArray]' 0)
+  }
+  local 'buf' ('[data:newByteArray]' (tot_len - 4))
+  local 'idx' 1
+  local 'frameStart' (millisOp)
+  local 'byteStart' (millisOp)
+  repeatUntil (idx > tot_len) {
+    if (((millisOp) - frameStart) > 1000) {
+      local 'tmp' ('[serial:read]')
+      return ('[data:newByteArray]' 0)
+    }
+    if (('[serial:available]') > 0) {
+      byte = (at 1 ('[serial:readNr]' 1))
+      if (idx < 5) {
+        comment 'check preamble'
+        if (byte != (at idx PREAMBLE)) {
+          sayIt idx (at idx buf) (at idx PREAMBLE)
+          local 'tmp' ('[serial:read]')
+          return ('[data:newByteArray]' 0)
+        }
+      } else {
+        atPut (idx - 4) buf byte
+      }
+      idx += 1
+      byteStart = (millisOp)
+    } else {
+      if (((millisOp) - byteStart) > 10) {
+        local 'tmp' ('[serial:read]')
+        return ('[data:newByteArray]' 0)
+      }
+    }
+  }
+  return buf
+}
+
+to '_receive command' {
+  local 'bytes' ('_read serial')
+  if ((size bytes) > 0) {
+    return ('_decode' bytes)
+  }
+  return ('[data:makeList]')
+}
+
+to '_send' cmd data {
+  local 'bytes' ('_encode' cmd data)
+  bytes = ('[data:join]' ('[data:asByteArray]' (size bytes)) bytes)
+  '[serial:write]' bytes
+}
+
+to '_send command' cmd data {
+  local 'PREAMBLE' '<$MU'
+  local 'bytes' ('[data:join]' ('[data:asByteArray]' PREAMBLE) ('_encode' cmd data))
+  bytes = ('[data:join]' ('[data:asByteArray]' (size bytes)) bytes)
+  '[serial:write]' bytes
+}
+
+to call cmd data {
+  '_send command' cmd data
+  return ('_receive command')
+}
+
+to flush {
+  local 'var' 0
+  repeatUntil (('[serial:available]') > 0) {
+    time = ('[serial:read]')
+  }
+}
+
+to init {
+  comment 'init serial port at 115200 and empty buffer'
+  '[serial:open]' 115200
+  local 'var' ('[serial:read]')
+}
+
+to process {
+  local 'cmd_data' ('_receive command')
+  if (not ((size cmd_data) == 0)) {
+    local 'cmd' (at 1 cmd_data)
+    local 'data' (at 2 cmd_data)
+    local 'return' (callCustomReporter cmd data)
+    if (isType return 'boolean') {
+      return = ('[data:makeList]')
+    } (not (isType return 'list')) {
+      return = ('[data:makeList]' return)
+    }
+    cmd = ('[data:join]' cmd '_ack')
+    '_send command' cmd return
+  }
+}
+

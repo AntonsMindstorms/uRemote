@@ -1,0 +1,326 @@
+module main
+author unknown
+version 1 0 
+description ''
+variables xval 
+
+  spec ' ' 'imu' 'imu _ _ _' 'auto auto auto' '10' '10' '10'
+
+to imu x y z {
+  graphIt x y z
+  xval = (xval + 1)
+  if (xval > 320) {
+    xval = 0
+    '[tft:clear]'
+  }
+  '[tft:setPixel]' xval (120 + (x / (14000 / 120))) (colorSwatch 255 253 61 255)
+  '[tft:setPixel]' xval (120 + (y / (14000 / 120))) (colorSwatch 255 11 37 255)
+  '[tft:setPixel]' xval (120 + (z / (14000 / 120))) (colorSwatch 69 241 255 255)
+}
+
+script 596 50 {
+to imu {}
+}
+
+script 105 75 {
+whenStarted
+'[tft:clear]'
+init
+forever {
+  process
+}
+}
+
+
+module TFT Output
+author MicroBlocks
+version 1 12 
+description 'Draw graphics and write text on boards with a TFT display, such as the M5Stack, M5Stick, Citilab ED1 or (discontinued) IoT-Bus.'
+
+  spec ' ' '[tft:clear]' 'clear TFT display'
+  space
+  spec ' ' '[tft:rect]' 'draw rectangle on TFT at x _ y _ width _ height _ color _ : filled _' 'num num num num color bool' 10 10 40 30 nil true
+  spec ' ' '[tft:roundedRect]' 'draw rounded rectangle on TFT at x _ y _ width _ height _ radius _ color _ : filled _' 'num num num num num color bool' 10 10 40 30 8 nil true
+  spec ' ' '[tft:circle]' 'draw circle on TFT at x _ y _ radius _ color _ : filled _' 'num num num color bool' 40 40 30 nil true
+  spec ' ' '[tft:triangle]' 'draw triangle on TFT at x _ y _ , x _ y _ , x _ y _ color _ : filled _' 'num num num num num num color bool' 20 20 30 80 60 5 nil true
+  spec ' ' '[tft:line]' 'draw line on TFT from x _ y _ to x _ y _ color _' 'num num num num color' 12 8 25 15
+  spec ' ' 'tft_drawVector' 'draw vector x _ y _ angle _ length _ color _' 'num num num num color' 40 40 45 40
+  space
+  spec ' ' '[tft:text]' 'write _ on TFT at x _ y _ color _ : scale _ wrap _ : bg color _' 'str num num color num bool color' 'Hello World!' 5 5 nil 2 true
+  spec ' ' 'tft_drawText' 'draw text _ on TFT at x _ y _ color _ : scale _ : bg color _' 'str num num color num color' 'Line 1
+Line 2' 50 20 nil 2
+  space
+  spec ' ' '[tft:setPixel]' 'set TFT pixel x _ y _ to _' 'num num color' 10 10
+  spec ' ' '[tft:pixelRow]' 'draw pixel row _ x _ y _ : bytesPerPixel _ : palette _' 'auto num num num str' 'aList' 0 0 4
+  spec ' ' '[tft:drawBitmap]' 'draw bitmap _ palette _ on TFT at x _ y _' 'str str num num' 'aBitmap' 'a list of colors' 10 10
+  space
+  spec 'r' 'tft_colorSwatch' '_' 'color'
+  spec 'r' 'makeColor' 'color r _ g _ b _ (0-255)' 'num num num' 0 100 100
+  spec 'r' 'makeGray' 'gray _ %' 'num' 50
+  spec 'r' 'randomColor' 'random color'
+  space
+  spec 'r' '[tft:getWidth]' 'TFT width'
+  spec 'r' '[tft:getHeight]' 'TFT height'
+  space
+  spec ' ' '[tft:setBacklight]' 'set TFT backlight _ (0-10)' 'num' 10
+  space
+  spec ' ' '_deferMonochromeDisplayUpdates' '_defer monochrome display updates'
+  spec ' ' '_resumeMonochromeDisplayUpdates' '_resume monochrome display updates'
+
+to '_deferMonochromeDisplayUpdates' {
+  '[tft:deferUpdates]'
+}
+
+to '_resumeMonochromeDisplayUpdates' {
+  '[tft:resumeUpdates]'
+}
+
+to makeColor r g b {
+  r = (maximum 0 (minimum r 255))
+  g = (maximum 0 (minimum g 255))
+  b = (maximum 0 (minimum b 255))
+  return ((r << 16) | ((g << 8) | b))
+}
+
+to makeGray percent {
+  gray = ((percent * 255) / 100)
+  gray = (maximum 0 (minimum gray 255))
+  return ((gray << 16) | ((gray << 8) | gray))
+}
+
+to randomColor {
+  local 'n1' (random 100 200)
+  local 'n2' (random 0 100)
+  if (1 == (random 1 3)) {
+    return ((n1 << 16) | (n2 << 8))
+  } (1 == (random 1 2)) {
+    return ((n2 << 16) | n1)
+  } else {
+    return ((n1 << 8) | n2)
+  }
+}
+
+to tft_colorSwatch color {
+  return color
+}
+
+to tft_drawText s x y color optionalScale optionalBGColor {
+  s = ('[data:convertType]' s 'string')
+  local 'scale' (argOrDefault 5 2)
+  local 'bgColor' (argOrDefault 6 '')
+  local 'lines' ('[data:split]' s ('[data:unicodeString]' 10))
+  for line ('[data:split]' s ('[data:unicodeString]' 10)) {
+    if (isType bgColor 'number') {
+      '[tft:text]' line x y color scale false bgColor
+    } else {
+      '[tft:text]' line x y color scale false
+    }
+    y += (8 * scale)
+  }
+}
+
+to tft_drawVector x y angle length color {
+  local 'endX' (x + ((length * ('[misc:sin]' (100 * (angle + 90)))) >> 14))
+  local 'endY' (y + ((length * ('[misc:sin]' (100 * angle))) >> 14))
+  '[tft:line]' x y endX endY color
+}
+
+
+module microremote
+author Ste7an
+version 1 0 
+description 'Communication library with MicroBlocks using the hubs
+
+UARTDevice.'
+variables time 
+
+  spec 'r' '_encode' 'encode _ data _' 'auto auto' 10 '10'
+  spec 'r' '_read serial' 'read serial'
+  spec 'r' '_decode' 'decode _' 'auto' '10'
+  spec 'r' 'call' 'call _ data _' 'auto auto' '10' '10'
+  spec 'r' '_receive command' 'receive command'
+  spec ' ' '_send command' 'send command _ data _' 'auto auto' '10' '10'
+  spec ' ' 'process' 'process'
+  spec ' ' 'flush' 'flush'
+  spec ' ' 'init' 'init'
+  spec 'r' 'does function' 'does function _ exist?' 'auto' '10'
+
+to '_decode' encoded {
+  local 'tot_len' (size encoded)
+  local 'var_list' ('[data:makeList]')
+  local 'p' 1
+  local 'l' (at p encoded)
+  local 'cmd' ('[data:newByteArray]' l)
+  for i l {
+    atPut i cmd (at ((i + p) - 0) encoded)
+  }
+  cmd = ('[data:convertType]' cmd 'string')
+  p += (l + 1)
+  repeatUntil (p > tot_len) {
+    local 'type' (at p encoded)
+    p += 1
+    l = (at p encoded)
+    local 'bytes' ('[data:newByteArray]' l)
+    for i l {
+      atPut i bytes (at ((i + p) - 0) encoded)
+    }
+    comment '78 = N -> number'
+    if (type == 78) {
+      bytes = ('[data:convertType]' ('[data:convertType]' bytes 'string') 'number')
+    } (type == 83) {
+      comment '83 = S -> string'
+      bytes = ('[data:convertType]' bytes 'string')
+    } (type == 65) {
+      comment '65 = A -> bytesarray'
+    } (type == 66) {
+      comment '66 = B -> boolean'
+      bytes = ('[data:convertType]' (at 1 bytes) 'boolean')
+    } else {
+    }
+    p += (l + 1)
+    var_list = ('[data:join]' var_list ('[data:makeList]' bytes))
+  }
+  return ('[data:makeList]' cmd var_list)
+}
+
+to '_encode' cmd list {
+  local 'list_len' (size list)
+  local 'bytes' ('[data:newByteArray]' 0)
+  local 'all_bytes' ('[data:newByteArray]' 0)
+  for i list_len {
+    local 'var' (at i list)
+    if (isType var 'number') {
+      comment '78 = N -> number'
+      local 'str' ('[data:convertType]' var 'string')
+      bytes = ('[data:join]' ('[data:asByteArray]' ('[data:makeList]' 78 (size str))) ('[data:convertType]' str 'byte array'))
+    } (isType var 'boolean') {
+      if var {
+        local 'bool' 1
+      } else {
+        local 'bool' 0
+      }
+      comment '66 = B -> boolean'
+      bytes = ('[data:asByteArray]' ('[data:makeList]' 66 1 bool))
+    } (isType var 'string') {
+      comment '83 = S -> string'
+      bytes = ('[data:join]' ('[data:asByteArray]' ('[data:makeList]' 83 (size var))) ('[data:convertType]' var 'byte array'))
+    } (isType var 'list') {
+      bytes = 0
+    } (isType var 'byte array') {
+      comment '65 = A -> bytesarray'
+      bytes = ('[data:join]' ('[data:asByteArray]' ('[data:makeList]' 65 (size var))) var)
+    }
+    all_bytes = ('[data:join]' all_bytes bytes)
+  }
+  all_bytes = ('[data:join]' ('[data:asByteArray]' (size cmd)) ('[data:asByteArray]' cmd) all_bytes)
+  return all_bytes
+}
+
+to '_read serial' {
+  local 'byte' 0
+  local 'PREAMBLE' ('[data:asByteArray]' '<$MU')
+  local 'start_time' (millisOp)
+  local 'tot_len' 0
+  waitUntil (or (((millisOp) - start_time) > 1000) (('[serial:available]') > 0))
+  if (('[serial:available]') > 0) {
+    tot_len = (at 1 ('[serial:readNr]' 1))
+  } else {
+    local 'tmp' ('[serial:read]')
+    return ('[data:newByteArray]' 0)
+  }
+  local 'buf' ('[data:newByteArray]' (tot_len - 4))
+  local 'idx' 1
+  local 'frameStart' (millisOp)
+  local 'byteStart' (millisOp)
+  repeatUntil (idx > tot_len) {
+    if (((millisOp) - frameStart) > 1000) {
+      local 'tmp' ('[serial:read]')
+      return ('[data:newByteArray]' 0)
+    }
+    if (('[serial:available]') > 0) {
+      byte = (at 1 ('[serial:readNr]' 1))
+      if (idx < 5) {
+        comment 'check preamble'
+        if (byte != (at idx PREAMBLE)) {
+          sayIt idx (at idx buf) (at idx PREAMBLE)
+          local 'tmp' ('[serial:read]')
+          return ('[data:newByteArray]' 0)
+        }
+      } else {
+        atPut (idx - 4) buf byte
+      }
+      idx += 1
+      byteStart = (millisOp)
+    } else {
+      if (((millisOp) - byteStart) > 10) {
+        local 'tmp' ('[serial:read]')
+        return ('[data:newByteArray]' 0)
+      }
+    }
+  }
+  return buf
+}
+
+to '_receive command' {
+  local 'bytes' ('_read serial')
+  if ((size bytes) > 0) {
+    return ('_decode' bytes)
+  }
+  return ('[data:makeList]')
+}
+
+to '_send' cmd data {
+  local 'bytes' ('_encode' cmd data)
+  bytes = ('[data:join]' ('[data:asByteArray]' (size bytes)) bytes)
+  '[serial:write]' bytes
+}
+
+to '_send command' cmd data {
+  local 'PREAMBLE' '<$MU'
+  local 'bytes' ('[data:join]' ('[data:asByteArray]' PREAMBLE) ('_encode' cmd data))
+  bytes = ('[data:join]' ('[data:asByteArray]' (size bytes)) bytes)
+  '[serial:write]' bytes
+}
+
+to call cmd data {
+  '_send command' cmd data
+  return ('_receive command')
+}
+
+to 'does function' function {
+  return (callCustomReporter '[misc:functionExists]' ('[data:makeList]' function))
+}
+
+to flush {
+  local 'var' 0
+  repeatUntil (('[serial:available]') > 0) {
+    time = ('[serial:read]')
+  }
+}
+
+to init {
+  comment 'init serial port at 115200 and empty buffer'
+  '[serial:open]' 115200
+  local 'var' ('[serial:read]')
+}
+
+to process {
+  local 'cmd_data' ('_receive command')
+  if (not ((size cmd_data) == 0)) {
+    local 'cmd' (at 1 cmd_data)
+    local 'data' (at 2 cmd_data)
+    if ('does function' cmd) {
+      local 'return' (callCustomReporter cmd data)
+      if (isType return 'boolean') {
+        return = ('[data:makeList]')
+      } (not (isType return 'list')) {
+        return = ('[data:makeList]' return)
+      }
+      cmd = ('[data:join]' cmd '_ack')
+      '_send command' cmd return
+    } else {
+      '_send command' '!ERROR' ('[data:makeList]' 'function does not exist')
+    }
+  }
+}
+

@@ -1,0 +1,214 @@
+module main
+author unknown
+version 1 0 
+description ''
+
+  spec 'r' 'joy' 'joy'
+
+to joy {
+  local 'bytes' ('[data:newByteArray]' 3)
+  '[sensors:i2cRead]' (hexToInt '52') bytes
+  return ('[data:makeList]' (at 1 bytes) (at 2 bytes) (at 3 bytes))
+}
+
+script 199 76 {
+whenStarted
+init
+forever {
+  process
+}
+}
+
+script 40 229 {
+to joy {}
+}
+
+
+module microremote
+author Ste7an
+version 1 0 
+description 'Communication library with MicroBlocks using the hubs
+UARTDevice.'
+variables time 
+
+  spec 'r' '_encode' 'encode _ data _' 'auto auto' 10 '10'
+  spec 'r' '_read serial' 'read serial'
+  spec 'r' '_decode' 'decode _' 'auto' '10'
+  spec 'r' 'call' 'call _ data _' 'auto auto' '10' '10'
+  spec 'r' '_receive command' 'receive command'
+  spec ' ' '_send command' 'send command _ data _' 'auto auto' '10' '10'
+  spec ' ' 'process' 'process'
+  spec ' ' 'flush' 'flush'
+  spec ' ' 'init' 'init'
+
+to '_decode' encoded {
+  local 'tot_len' (size encoded)
+  local 'var_list' ('[data:makeList]')
+  local 'p' 1
+  local 'l' (at p encoded)
+  local 'cmd' ('[data:newByteArray]' l)
+  for i l {
+    atPut i cmd (at ((i + p) - 0) encoded)
+  }
+  cmd = ('[data:convertType]' cmd 'string')
+  p += (l + 1)
+  repeatUntil (p > tot_len) {
+    local 'type' (at p encoded)
+    p += 1
+    l = (at p encoded)
+    local 'bytes' ('[data:newByteArray]' l)
+    for i l {
+      atPut i bytes (at ((i + p) - 0) encoded)
+    }
+    comment '78 = N -> number'
+    if (type == 78) {
+      bytes = ('[data:convertType]' ('[data:convertType]' bytes 'string') 'number')
+    } (type == 83) {
+      comment '83 = S -> string'
+      bytes = ('[data:convertType]' bytes 'string')
+    } (type == 65) {
+      comment '65 = A -> bytesarray'
+    } (type == 66) {
+      comment '66 = B -> boolean'
+      bytes = ('[data:convertType]' (at 1 bytes) 'boolean')
+    } else {
+    }
+    p += (l + 1)
+    var_list = ('[data:join]' var_list ('[data:makeList]' bytes))
+  }
+  return ('[data:makeList]' cmd var_list)
+}
+
+to '_encode' cmd list {
+  local 'list_len' (size list)
+  local 'bytes' ('[data:newByteArray]' 0)
+  local 'all_bytes' ('[data:newByteArray]' 0)
+  for i list_len {
+    local 'var' (at i list)
+    if (isType var 'number') {
+      comment '78 = N -> number'
+      local 'str' ('[data:convertType]' var 'string')
+      bytes = ('[data:join]' ('[data:asByteArray]' ('[data:makeList]' 78 (size str))) ('[data:convertType]' str 'byte array'))
+    } (isType var 'boolean') {
+      if var {
+        local 'bool' 1
+      } else {
+        local 'bool' 0
+      }
+      comment '66 = B -> boolean'
+      bytes = ('[data:asByteArray]' ('[data:makeList]' 66 1 bool))
+    } (isType var 'string') {
+      comment '83 = S -> string'
+      bytes = ('[data:join]' ('[data:asByteArray]' ('[data:makeList]' 83 (size var))) ('[data:convertType]' var 'byte array'))
+    } (isType var 'list') {
+      bytes = 0
+    } (isType var 'byte array') {
+      comment '65 = A -> bytesarray'
+      bytes = ('[data:join]' ('[data:asByteArray]' ('[data:makeList]' 65 (size var))) var)
+    }
+    all_bytes = ('[data:join]' all_bytes bytes)
+  }
+  all_bytes = ('[data:join]' ('[data:asByteArray]' (size cmd)) ('[data:asByteArray]' cmd) all_bytes)
+  return all_bytes
+}
+
+to '_read serial' {
+  local 'byte' 0
+  local 'PREAMBLE' ('[data:asByteArray]' '<$MU')
+  local 'start_time' (millisOp)
+  local 'tot_len' 0
+  waitUntil (or (((millisOp) - start_time) > 1000) (('[serial:available]') > 0))
+  if (('[serial:available]') > 0) {
+    tot_len = (at 1 ('[serial:readNr]' 1))
+  } else {
+    local 'tmp' ('[serial:read]')
+    return ('[data:newByteArray]' 0)
+  }
+  local 'buf' ('[data:newByteArray]' (tot_len - 4))
+  local 'idx' 1
+  local 'frameStart' (millisOp)
+  local 'byteStart' (millisOp)
+  repeatUntil (idx > tot_len) {
+    if (((millisOp) - frameStart) > 1000) {
+      local 'tmp' ('[serial:read]')
+      return ('[data:newByteArray]' 0)
+    }
+    if (('[serial:available]') > 0) {
+      byte = (at 1 ('[serial:readNr]' 1))
+      if (idx < 5) {
+        comment 'check preamble'
+        if (byte != (at idx PREAMBLE)) {
+          sayIt idx (at idx buf) (at idx PREAMBLE)
+          local 'tmp' ('[serial:read]')
+          return ('[data:newByteArray]' 0)
+        }
+      } else {
+        atPut (idx - 4) buf byte
+      }
+      idx += 1
+      byteStart = (millisOp)
+    } else {
+      if (((millisOp) - byteStart) > 10) {
+        local 'tmp' ('[serial:read]')
+        return ('[data:newByteArray]' 0)
+      }
+    }
+  }
+  return buf
+}
+
+to '_receive command' {
+  local 'bytes' ('_read serial')
+  if ((size bytes) > 0) {
+    return ('_decode' bytes)
+  }
+  return ('[data:makeList]')
+}
+
+to '_send' cmd data {
+  local 'bytes' ('_encode' cmd data)
+  bytes = ('[data:join]' ('[data:asByteArray]' (size bytes)) bytes)
+  '[serial:write]' bytes
+}
+
+to '_send command' cmd data {
+  local 'PREAMBLE' '<$MU'
+  local 'bytes' ('[data:join]' ('[data:asByteArray]' PREAMBLE) ('_encode' cmd data))
+  bytes = ('[data:join]' ('[data:asByteArray]' (size bytes)) bytes)
+  '[serial:write]' bytes
+}
+
+to call cmd data {
+  '_send command' cmd data
+  return ('_receive command')
+}
+
+to flush {
+  local 'var' 0
+  repeatUntil (('[serial:available]') > 0) {
+    time = ('[serial:read]')
+  }
+}
+
+to init {
+  comment 'init serial port at 115200 and empty buffer'
+  '[serial:open]' 115200
+  local 'var' ('[serial:read]')
+}
+
+to process {
+  local 'cmd_data' ('_receive command')
+  if (not ((size cmd_data) == 0)) {
+    local 'cmd' (at 1 cmd_data)
+    local 'data' (at 2 cmd_data)
+    local 'return' (callCustomReporter cmd data)
+    if (isType return 'boolean') {
+      return = ('[data:makeList]')
+    } (not (isType return 'list')) {
+      return = ('[data:makeList]' return)
+    }
+    cmd = ('[data:join]' cmd '_ack')
+    '_send command' cmd return
+  }
+}
+
