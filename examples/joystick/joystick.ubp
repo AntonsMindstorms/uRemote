@@ -11,7 +11,7 @@ to joy {
   return ('[data:makeList]' (at 1 bytes) (at 2 bytes) (at 3 bytes))
 }
 
-script 199 76 {
+script 199 66 {
 whenStarted
 init
 forever {
@@ -19,27 +19,27 @@ forever {
 }
 }
 
-script 40 229 {
+script 40 219 {
 to joy {}
 }
 
 
-module microremote
+module uremote
 author Ste7an
-version 1 0 
-description 'Communication library with MicroBlocks using the hubs
-UARTDevice.'
+version 1 2 
+description 'Communication library with MicroBlocks using the hubs UARTDevice.
+'
 variables time 
 
-  spec 'r' '_encode' 'encode _ data _' 'auto auto' 10 '10'
-  spec 'r' '_read serial' 'read serial'
+  spec ' ' 'init' 'uremote init'
+  spec 'r' 'call' 'uremote call _ data _' 'str auto any' 'Command' <Reporter v>
+  spec ' ' 'process' 'uremote process'
+  spec 'r' '_encode' 'encode _ data _' 'str auto any' 'Command' <Reporter v>
+  spec 'r' '_wait and read serial' 'wait and read serial'
   spec 'r' '_decode' 'decode _' 'auto' '10'
-  spec 'r' 'call' 'call _ data _' 'auto auto' '10' '10'
+  spec ' ' '_send command' 'send command _ data _' 'str auto any' 'Command' <Reporter v>
   spec 'r' '_receive command' 'receive command'
-  spec ' ' '_send command' 'send command _ data _' 'auto auto' '10' '10'
-  spec ' ' 'process' 'process'
   spec ' ' 'flush' 'flush'
-  spec ' ' 'init' 'init'
 
 to '_decode' encoded {
   local 'tot_len' (size encoded)
@@ -80,6 +80,7 @@ to '_decode' encoded {
 }
 
 to '_encode' cmd list {
+  if (not (isType list 'list')) {list = ('[data:makeList]' list)}
   local 'list_len' (size list)
   local 'bytes' ('[data:newByteArray]' 0)
   local 'all_bytes' ('[data:newByteArray]' 0)
@@ -112,7 +113,28 @@ to '_encode' cmd list {
   return all_bytes
 }
 
-to '_read serial' {
+to '_receive command' {
+  local 'bytes' ('_wait and read serial')
+  if ((size bytes) > 0) {
+    return ('_decode' bytes)
+  }
+  return ('[data:makeList]')
+}
+
+to '_send' cmd data {
+  local 'bytes' ('_encode' cmd data)
+  bytes = ('[data:join]' ('[data:asByteArray]' (size bytes)) bytes)
+  '[serial:write]' bytes
+}
+
+to '_send command' cmd data {
+  local 'PREAMBLE' '<$MU'
+  local 'bytes' ('[data:join]' ('[data:asByteArray]' PREAMBLE) ('_encode' cmd data))
+  bytes = ('[data:join]' ('[data:asByteArray]' (size bytes)) bytes)
+  '[serial:write]' bytes
+}
+
+to '_wait and read serial' {
   local 'byte' 0
   local 'PREAMBLE' ('[data:asByteArray]' '<$MU')
   local 'start_time' (millisOp)
@@ -157,36 +179,21 @@ to '_read serial' {
   return buf
 }
 
-to '_receive command' {
-  local 'bytes' ('_read serial')
-  if ((size bytes) > 0) {
-    return ('_decode' bytes)
-  }
-  return ('[data:makeList]')
-}
-
-to '_send' cmd data {
-  local 'bytes' ('_encode' cmd data)
-  bytes = ('[data:join]' ('[data:asByteArray]' (size bytes)) bytes)
-  '[serial:write]' bytes
-}
-
-to '_send command' cmd data {
-  local 'PREAMBLE' '<$MU'
-  local 'bytes' ('[data:join]' ('[data:asByteArray]' PREAMBLE) ('_encode' cmd data))
-  bytes = ('[data:join]' ('[data:asByteArray]' (size bytes)) bytes)
-  '[serial:write]' bytes
-}
-
 to call cmd data {
   '_send command' cmd data
-  return ('_receive command')
+  local 'rcv' ('_receive command')
+  local 'rcv_data' (at 2 rcv)
+  if ((size rcv_data) == 1) {
+    return (at 1 rcv_data)
+  } else {
+    return rcv_data
+  }
 }
 
 to flush {
   local 'var' 0
-  repeatUntil (('[serial:available]') > 0) {
-    time = ('[serial:read]')
+  repeatUntil (('[serial:available]') == 0) {
+    var = ('[serial:read]')
   }
 }
 

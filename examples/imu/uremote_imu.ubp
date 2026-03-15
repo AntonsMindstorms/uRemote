@@ -18,11 +18,11 @@ to imu x y z {
   '[tft:setPixel]' xval (120 + (z / (14000 / 120))) (colorSwatch 69 241 255 255)
 }
 
-script 596 50 {
+script 596 40 {
 to imu {}
 }
 
-script 105 75 {
+script 105 65 {
 whenStarted
 '[tft:clear]'
 init
@@ -34,7 +34,7 @@ forever {
 
 module TFT Output
 author MicroBlocks
-version 1 12 
+version 1 14 
 description 'Draw graphics and write text on boards with a TFT display, such as the M5Stack, M5Stick, Citilab ED1 or (discontinued) IoT-Bus.'
 
   spec ' ' '[tft:clear]' 'clear TFT display'
@@ -126,24 +126,22 @@ to tft_drawVector x y angle length color {
 }
 
 
-module microremote
+module uremote
 author Ste7an
-version 1 0 
-description 'Communication library with MicroBlocks using the hubs
-
-UARTDevice.'
+version 1 2 
+description 'Communication library with MicroBlocks using the hubs UARTDevice.
+'
 variables time 
 
-  spec 'r' '_encode' 'encode _ data _' 'auto auto' 10 '10'
-  spec 'r' '_read serial' 'read serial'
+  spec ' ' 'init' 'uremote init'
+  spec 'r' 'call' 'uremote call _ data _' 'str auto any' 'Command' <Reporter v>
+  spec ' ' 'process' 'uremote process'
+  spec 'r' '_encode' 'encode _ data _' 'str auto any' 'Command' <Reporter v>
+  spec 'r' '_wait and read serial' 'wait and read serial'
   spec 'r' '_decode' 'decode _' 'auto' '10'
-  spec 'r' 'call' 'call _ data _' 'auto auto' '10' '10'
+  spec ' ' '_send command' 'send command _ data _' 'str auto any' 'Command' <Reporter v>
   spec 'r' '_receive command' 'receive command'
-  spec ' ' '_send command' 'send command _ data _' 'auto auto' '10' '10'
-  spec ' ' 'process' 'process'
   spec ' ' 'flush' 'flush'
-  spec ' ' 'init' 'init'
-  spec 'r' 'does function' 'does function _ exist?' 'auto' '10'
 
 to '_decode' encoded {
   local 'tot_len' (size encoded)
@@ -184,6 +182,7 @@ to '_decode' encoded {
 }
 
 to '_encode' cmd list {
+  if (not (isType list 'list')) {list = ('[data:makeList]' list)}
   local 'list_len' (size list)
   local 'bytes' ('[data:newByteArray]' 0)
   local 'all_bytes' ('[data:newByteArray]' 0)
@@ -216,7 +215,28 @@ to '_encode' cmd list {
   return all_bytes
 }
 
-to '_read serial' {
+to '_receive command' {
+  local 'bytes' ('_wait and read serial')
+  if ((size bytes) > 0) {
+    return ('_decode' bytes)
+  }
+  return ('[data:makeList]')
+}
+
+to '_send' cmd data {
+  local 'bytes' ('_encode' cmd data)
+  bytes = ('[data:join]' ('[data:asByteArray]' (size bytes)) bytes)
+  '[serial:write]' bytes
+}
+
+to '_send command' cmd data {
+  local 'PREAMBLE' '<$MU'
+  local 'bytes' ('[data:join]' ('[data:asByteArray]' PREAMBLE) ('_encode' cmd data))
+  bytes = ('[data:join]' ('[data:asByteArray]' (size bytes)) bytes)
+  '[serial:write]' bytes
+}
+
+to '_wait and read serial' {
   local 'byte' 0
   local 'PREAMBLE' ('[data:asByteArray]' '<$MU')
   local 'start_time' (millisOp)
@@ -261,40 +281,21 @@ to '_read serial' {
   return buf
 }
 
-to '_receive command' {
-  local 'bytes' ('_read serial')
-  if ((size bytes) > 0) {
-    return ('_decode' bytes)
-  }
-  return ('[data:makeList]')
-}
-
-to '_send' cmd data {
-  local 'bytes' ('_encode' cmd data)
-  bytes = ('[data:join]' ('[data:asByteArray]' (size bytes)) bytes)
-  '[serial:write]' bytes
-}
-
-to '_send command' cmd data {
-  local 'PREAMBLE' '<$MU'
-  local 'bytes' ('[data:join]' ('[data:asByteArray]' PREAMBLE) ('_encode' cmd data))
-  bytes = ('[data:join]' ('[data:asByteArray]' (size bytes)) bytes)
-  '[serial:write]' bytes
-}
-
 to call cmd data {
   '_send command' cmd data
-  return ('_receive command')
-}
-
-to 'does function' function {
-  return (callCustomReporter '[misc:functionExists]' ('[data:makeList]' function))
+  local 'rcv' ('_receive command')
+  local 'rcv_data' (at 2 rcv)
+  if ((size rcv_data) == 1) {
+    return (at 1 rcv_data)
+  } else {
+    return rcv_data
+  }
 }
 
 to flush {
   local 'var' 0
-  repeatUntil (('[serial:available]') > 0) {
-    time = ('[serial:read]')
+  repeatUntil (('[serial:available]') == 0) {
+    var = ('[serial:read]')
   }
 }
 
@@ -309,18 +310,14 @@ to process {
   if (not ((size cmd_data) == 0)) {
     local 'cmd' (at 1 cmd_data)
     local 'data' (at 2 cmd_data)
-    if ('does function' cmd) {
-      local 'return' (callCustomReporter cmd data)
-      if (isType return 'boolean') {
-        return = ('[data:makeList]')
-      } (not (isType return 'list')) {
-        return = ('[data:makeList]' return)
-      }
-      cmd = ('[data:join]' cmd '_ack')
-      '_send command' cmd return
-    } else {
-      '_send command' '!ERROR' ('[data:makeList]' 'function does not exist')
+    local 'return' (callCustomReporter cmd data)
+    if (isType return 'boolean') {
+      return = ('[data:makeList]')
+    } (not (isType return 'list')) {
+      return = ('[data:makeList]' return)
     }
+    cmd = ('[data:join]' cmd '_ack')
+    '_send command' cmd return
   }
 }
 
