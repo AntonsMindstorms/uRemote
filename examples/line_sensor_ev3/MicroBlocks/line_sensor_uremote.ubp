@@ -1,0 +1,472 @@
+module main
+author unknown
+version 1 0 
+description ''
+
+  spec 'r' 'sen' 'sen'
+
+to sen {
+  comment 'this 1 ms delay makes it super stable?? need to figure out why'
+  waitMillis 1
+  return ('[data:asByteArray]' _line_data)
+}
+
+script 636 102 {
+whenStarted
+init
+'line init'
+'set emitter level' true
+'led mode' 'on'
+'restore calibration'
+command 'mode calibrated'
+forever {
+  comment 'read all values from sensor'
+  'line sensor update'
+  process
+}
+}
+
+script 259 133 {
+comment 'click here to see values of sensors'
+}
+
+script 291 168 ('read line')
+
+script 236 229 {
+comment 'start calibration, blue led flashing'
+command 'calibrate'
+}
+
+script 240 322 {
+comment 'choose calibrated values'
+command 'mode calibrated'
+}
+
+script 1078 354 {
+comment 'plot position and derivative'
+graphIt (position) ('line position derative')
+comment 'shape: |, <, >, T Y or '' '' (space=no line)'
+sayIt ('[data:unicodeString]' ('line sensor shape'))
+}
+
+script 242 424 {
+comment 'choose raw values'
+command 'mode raw'
+}
+
+script 665 483 {
+comment 'open graph to see position and derivative'
+}
+
+script 238 515 {
+comment 'invert line sensor values'
+'line sensor invert' true
+}
+
+script 599 566 {
+comment 'EV3 program:
+
+
+from pybricks.hubs import EV3Brick
+from pybricks.parameters import Button, Color, Direction, Port, Side, Stop
+from pybricks.robotics import DriveBase
+from pybricks.tools import wait, StopWatch
+
+hub = EV3Brick()
+
+from uremote import uRemote
+
+ur=uRemote(Port.S1)
+s=StopWatch()
+cnt=0
+err=0
+while 1:
+
+    
+       
+    ack, data = ur.call(''sen'')
+    if ack==''!ERROR'':
+        err+=1
+    cnt+=1
+    if cnt%100==0:
+        print(err,cnt,ack,data)
+        if ack!=''!ERROR'':
+            hex_str = '' ''.join(''{:02X}''.format(b) for b in data)
+            print(cnt,hex_str)
+        
+        cnt=0
+        err=0
+        print(s.time())
+        s=StopWatch()'
+}
+
+script 50 583 {
+to sen {}
+}
+
+script 277 732 ('read line')
+
+
+module 'Line Follower' Input
+author Ste7an
+version 1 4 
+choices led_modes off on inverted position 
+choices commands 'mode raw' 'mode calibrated' 'get version' debug calibrate 'is calibrated' 'load calibration' 'save calibration' 'get minimum' 'get maximum' 'set minimum' 'set maximum' neopixel 'set leds' 
+description 'I2C Line follower on ch32v203'
+variables _can_measure _line_data _line_inverted 
+
+  spec ' ' 'line init' 'line sensor init'
+  spec ' ' 'line sensor update' 'line sensor update'
+  spec ' ' 'line sensor invert' 'line sensor invert _' 'bool' true
+  spec 'r' 'read line' 'line sensor values'
+  spec 'r' 'position' 'line position'
+  spec 'r' 'line position derative' 'line position deravitive'
+  spec 'r' 'line sensor shape' 'line sensor shape'
+  space
+  spec ' ' 'command' 'line sensor command _ : value _' 'str.commands num' 'mode raw' 0
+  spec 'r' 'get version' 'line sensor  version'
+  space
+  spec 'r' 'is calibrated' 'line sensor is calibrated'
+  spec ' ' 'store calibration' 'store calibration'
+  spec ' ' 'restore calibration' 'restore calibration'
+  space
+  spec ' ' 'set emitter level' 'enable emitters _' 'bool' true
+  spec ' ' 'led mode' 'led mode _' 'str.led_modes' 'on'
+  spec ' ' 'neopixel' 'set NeoPixel _ color _' 'auto color' 10
+
+to command cmd args {
+  local 'cmd_id' 0
+  if (cmd == 'mode raw') {
+    cmd_id = 0
+  } (cmd == 'mode calibrated') {
+    cmd_id = 1
+  } (cmd == 'get version') {
+    cmd_id = 2
+  } (cmd == 'debug') {
+    cmd_id = 3
+  } (cmd == 'calibrate') {
+    cmd_id = 4
+  } (cmd == 'is calibrated') {
+    cmd_id = 5
+  } (cmd == 'load calibration') {
+    cmd_id = 6
+  } (cmd == 'save calibration') {
+    cmd_id = 7
+  } (cmd == 'get minimum') {
+    cmd_id = 8
+  } (cmd == 'get maximum') {
+    cmd_id = 9
+  } (cmd == 'set minimum') {
+    cmd_id = 10
+  } (cmd == 'set maximum') {
+    cmd_id = 11
+  } (cmd == 'neopixel') {
+    cmd_id = 12
+  } (cmd == 'set leds') {
+    cmd_id = 13
+  } (cmd == 'set emitter') {
+    cmd_id = 14
+  }
+  if ((argOrDefault 2 'None') == 'None') {
+    local 'buf' ('[data:makeList]' cmd_id)
+  } else {
+    local 'buf' ('[data:makeList]' cmd_id args)
+  }
+  '[sensors:i2cWrite]' 51 buf
+}
+
+to 'get version' {
+  _can_measure = (booleanConstant false)
+  local 'tmp' (newList 2)
+  command 'get version'
+  '[sensors:i2cRead]' 51 tmp
+  _can_measure = (booleanConstant false)
+  return ('[data:join]' (at 1 tmp) '.' (at 2 tmp))
+}
+
+to 'is calibrated' {
+  _can_measure = (booleanConstant false)
+  local 'buf' (newList 1)
+  command 'is calibrated'
+  '[sensors:i2cRead]' 51 buf
+  _can_measure = (booleanConstant true)
+  return ((at 1 buf) == 1)
+}
+
+to 'led mode' mode {
+  local 'led_mode' 0
+  if (mode == 'off') {
+    led_mode = 0
+  } (mode == 'on') {
+    led_mode = 1
+  } (mode == 'inverted') {
+    led_mode = 2
+  } (mode == 'position') {
+    led_mode = 3
+  }
+  '[sensors:i2cWrite]' 51 ('[data:makeList]' 13 led_mode)
+}
+
+to 'line init' {
+  _can_measure = (booleanConstant true)
+}
+
+to 'line position derative' {
+  return ((at 12 _line_data) - 128)
+}
+
+to 'line sensor invert' inverted {
+  _line_inverted = inverted
+}
+
+to 'line sensor shape' {
+  return (at 13 _line_data)
+}
+
+to 'line sensor update' {
+  _line_data = (newList 13)
+  if _can_measure {
+    '[sensors:i2cRead]' 51 _line_data
+  }
+}
+
+to neopixel nr color {
+  local 'r' ((color >> 16) & 255)
+  local 'g' ((color >> 8) & 255)
+  local 'b' (color & 255)
+  '[sensors:i2cWrite]' 51 ('[data:makeList]' 12 (nr - 1) r g b)
+}
+
+to position {
+  return ((at 9 _line_data) - 128)
+}
+
+to 'read line' {
+  local 'buf' (newList 8)
+  if _line_inverted {
+    for i 8 {
+      atPut i buf (255 - (at i _line_data))
+    }
+  } else {
+    for i 8 {
+      atPut i buf (at i _line_data)
+    }
+  }
+  return buf
+}
+
+to 'restore calibration' {
+  _can_measure = (booleanConstant false)
+  command 'load calibration'
+  waitMillis 500
+  _can_measure = (booleanConstant true)
+}
+
+to 'set emitter level' enable {
+  '[sensors:i2cWrite]' 51 ('[data:makeList]' 14 ('[data:convertType]' enable 'number')) true
+}
+
+to 'store calibration' {
+  _can_measure = (booleanConstant false)
+  command 'save calibration'
+  comment 'wait some safe time'
+  waitMillis 1000
+  _can_measure = (booleanConstant true)
+}
+
+
+module uremote
+author Ste7an
+version 1 2 
+description 'Communication library with MicroBlocks using the hubs UARTDevice.
+'
+variables time 
+
+  spec ' ' 'init' 'uremote init'
+  spec 'r' 'call' 'uremote call _ data _' 'str auto any' 'Command' <Reporter v>
+  spec ' ' 'process' 'uremote process'
+  spec 'r' '_encode' 'encode _ data _' 'str auto any' 'Command' <Reporter v>
+  spec 'r' '_wait and read serial' 'wait and read serial'
+  spec 'r' '_decode' 'decode _' 'auto' '10'
+  spec ' ' '_send command' 'send command _ data _' 'str auto any' 'Command' <Reporter v>
+  spec 'r' '_receive command' 'receive command'
+  spec ' ' 'flush' 'flush'
+
+to '_decode' encoded {
+  local 'tot_len' (size encoded)
+  local 'var_list' ('[data:makeList]')
+  local 'p' 1
+  local 'l' (at p encoded)
+  local 'cmd' ('[data:newByteArray]' l)
+  for i l {
+    atPut i cmd (at ((i + p) - 0) encoded)
+  }
+  cmd = ('[data:convertType]' cmd 'string')
+  p += (l + 1)
+  repeatUntil (p > tot_len) {
+    local 'type' (at p encoded)
+    p += 1
+    l = (at p encoded)
+    local 'bytes' ('[data:newByteArray]' l)
+    for i l {
+      atPut i bytes (at ((i + p) - 0) encoded)
+    }
+    comment '78 = N -> number'
+    if (type == 78) {
+      bytes = ('[data:convertType]' ('[data:convertType]' bytes 'string') 'number')
+    } (type == 83) {
+      comment '83 = S -> string'
+      bytes = ('[data:convertType]' bytes 'string')
+    } (type == 65) {
+      comment '65 = A -> bytesarray'
+    } (type == 66) {
+      comment '66 = B -> boolean'
+      bytes = ('[data:convertType]' (at 1 bytes) 'boolean')
+    } else {
+    }
+    p += (l + 1)
+    var_list = ('[data:join]' var_list ('[data:makeList]' bytes))
+  }
+  return ('[data:makeList]' cmd var_list)
+}
+
+to '_encode' cmd list {
+  if (not (isType list 'list')) {list = ('[data:makeList]' list)}
+  local 'list_len' (size list)
+  local 'bytes' ('[data:newByteArray]' 0)
+  local 'all_bytes' ('[data:newByteArray]' 0)
+  for i list_len {
+    local 'var' (at i list)
+    if (isType var 'number') {
+      comment '78 = N -> number'
+      local 'str' ('[data:convertType]' var 'string')
+      bytes = ('[data:join]' ('[data:asByteArray]' ('[data:makeList]' 78 (size str))) ('[data:convertType]' str 'byte array'))
+    } (isType var 'boolean') {
+      if var {
+        local 'bool' 1
+      } else {
+        local 'bool' 0
+      }
+      comment '66 = B -> boolean'
+      bytes = ('[data:asByteArray]' ('[data:makeList]' 66 1 bool))
+    } (isType var 'string') {
+      comment '83 = S -> string'
+      bytes = ('[data:join]' ('[data:asByteArray]' ('[data:makeList]' 83 (size var))) ('[data:convertType]' var 'byte array'))
+    } (isType var 'list') {
+      bytes = 0
+    } (isType var 'byte array') {
+      comment '65 = A -> bytesarray'
+      bytes = ('[data:join]' ('[data:asByteArray]' ('[data:makeList]' 65 (size var))) var)
+    }
+    all_bytes = ('[data:join]' all_bytes bytes)
+  }
+  all_bytes = ('[data:join]' ('[data:asByteArray]' (size cmd)) ('[data:asByteArray]' cmd) all_bytes)
+  return all_bytes
+}
+
+to '_receive command' {
+  local 'bytes' ('_wait and read serial')
+  if ((size bytes) > 0) {
+    return ('_decode' bytes)
+  }
+  return ('[data:makeList]')
+}
+
+to '_send' cmd data {
+  local 'bytes' ('_encode' cmd data)
+  bytes = ('[data:join]' ('[data:asByteArray]' (size bytes)) bytes)
+  '[serial:write]' bytes
+}
+
+to '_send command' cmd data {
+  local 'PREAMBLE' '<$MU'
+  local 'bytes' ('[data:join]' ('[data:asByteArray]' PREAMBLE) ('_encode' cmd data))
+  bytes = ('[data:join]' ('[data:asByteArray]' (size bytes)) bytes)
+  '[serial:write]' bytes
+}
+
+to '_wait and read serial' {
+  local 'byte' 0
+  local 'PREAMBLE' ('[data:asByteArray]' '<$MU')
+  local 'start_time' (millisOp)
+  local 'tot_len' 0
+  waitUntil (or (((millisOp) - start_time) > 1000) (('[serial:available]') > 0))
+  if (('[serial:available]') > 0) {
+    tot_len = (at 1 ('[serial:readNr]' 1))
+  } else {
+    local 'tmp' ('[serial:read]')
+    return ('[data:newByteArray]' 0)
+  }
+  local 'buf' ('[data:newByteArray]' (tot_len - 4))
+  local 'idx' 1
+  local 'frameStart' (millisOp)
+  local 'byteStart' (millisOp)
+  repeatUntil (idx > tot_len) {
+    if (((millisOp) - frameStart) > 1000) {
+      local 'tmp' ('[serial:read]')
+      return ('[data:newByteArray]' 0)
+    }
+    if (('[serial:available]') > 0) {
+      byte = (at 1 ('[serial:readNr]' 1))
+      if (idx < 5) {
+        comment 'check preamble'
+        if (byte != (at idx PREAMBLE)) {
+          sayIt idx (at idx buf) (at idx PREAMBLE)
+          local 'tmp' ('[serial:read]')
+          return ('[data:newByteArray]' 0)
+        }
+      } else {
+        atPut (idx - 4) buf byte
+      }
+      idx += 1
+      byteStart = (millisOp)
+    } else {
+      if (((millisOp) - byteStart) > 10) {
+        local 'tmp' ('[serial:read]')
+        return ('[data:newByteArray]' 0)
+      }
+    }
+  }
+  return buf
+}
+
+to call cmd data {
+  '_send command' cmd data
+  local 'rcv' ('_receive command')
+  local 'rcv_data' (at 2 rcv)
+  if ((size rcv_data) == 1) {
+    return (at 1 rcv_data)
+  } else {
+    return rcv_data
+  }
+}
+
+to flush {
+  local 'var' 0
+  repeatUntil (('[serial:available]') == 0) {
+    var = ('[serial:read]')
+  }
+}
+
+to init {
+  comment 'init serial port at 115200 and empty buffer'
+  '[serial:open]' 115200
+  local 'var' ('[serial:read]')
+}
+
+to process {
+  local 'cmd_data' ('_receive command')
+  if (not ((size cmd_data) == 0)) {
+    local 'cmd' (at 1 cmd_data)
+    local 'data' (at 2 cmd_data)
+    local 'return' (callCustomReporter cmd data)
+    if (isType return 'boolean') {
+      return = ('[data:makeList]')
+    } (not (isType return 'list')) {
+      return = ('[data:makeList]' return)
+    }
+    cmd = ('[data:join]' cmd '_ack')
+    '_send command' cmd return
+  }
+}
+
