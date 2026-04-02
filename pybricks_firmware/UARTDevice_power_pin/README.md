@@ -1,668 +1,333 @@
-\## Problem description
-
+## Problem description
 The UARTDevice iodevice is a nice generic way to communicate with external devices using plain uart communciation. When external devices have more power needs than the 3v3 line can deliver (e.g. when driving NeoPixels or Servo motors), it would be nice when such a device can use 8V power coming from one of the power lines P1 or P2.
-
-
 
 The PUPDevice iodevice allows for setting power on either P1 or P2 depending how that is negotiatied in the PUP protocol. For I2CDevices, there is a keyword argument `powered` that allows for powering P1 (not P2). Unfortunately, I2Cdevice is not present for prime hub or technic hub, only for EV3 hub (and there the `powered` does work, but is not effective, as the P1 pin is connected through a 330Ohm resistor, and the voltage drops sharply when connecting a device that draws some current.)
 
-
-
-\## Proposed solution 
-
-I propose to add a keyword argument `power\_pin` to the UARTDevice  `\_\_init\_\_` method where the argument can be 0 (no power), 1 (P1 powered) or 2 (P2 powered).
-
-
+## Proposed solution 
+I propose to add a keyword argument `power_pin` to the UARTDevice  `__init__` method where the argument can be 0 (no power), 1 (P1 powered) or 2 (P2 powered).
 
 In a pybricks program that would look like:
-
 ```
-
-uart = UARTDevice(Port.A, power\_pin = 1)
-
+uart = UARTDevice(Port.A, power_pin = 1)
 ```
-
-
 
 resulting in P1 powered and
 
-
-
 ```
-
-uart = UARTDevice(Port.A, power\_pin = 0)
-
+uart = UARTDevice(Port.A, power_pin = 0)
 ```
-
 resulting in P1 nor P2 powered.
 
+## Proposed changes to `pb_type_uart_device.c` 
 
-
-\## Proposed changes to `pb\_type\_uart\_device.c` 
-
-
-
-\- an extra keyword argument `power\_pin` is added to `\_\_init\_\_`
-
-
+- an extra keyword argument `power_pin` is added to `__init__`
 
 ```
-
-static mp\_obj\_t pb\_type\_uart\_device\_make\_new(const mp\_obj\_type\_t \*type, size\_t n\_args, size\_t n\_kw, const mp\_obj\_t \*args) {
-
-&#x20;   PB\_PARSE\_ARGS\_CLASS(n\_args, n\_kw, args,
-
-&#x20;       PB\_ARG\_REQUIRED(port),
-
-&#x20;       PB\_ARG\_DEFAULT\_INT(baudrate, 115200),
-
-&#x20;       PB\_ARG\_DEFAULT\_NONE(timeout),
-
-&#x20;       PB\_ARG\_DEFAULT\_INT(power\_pin, 0)
-
-&#x20;       );
-
+static mp_obj_t pb_type_uart_device_make_new(const mp_obj_type_t *type, size_t n_args, size_t n_kw, const mp_obj_t *args) {
+    PB_PARSE_ARGS_CLASS(n_args, n_kw, args,
+        PB_ARG_REQUIRED(port),
+        PB_ARG_DEFAULT_INT(baudrate, 115200),
+        PB_ARG_DEFAULT_NONE(timeout),
+        PB_ARG_DEFAULT_INT(power_pin, 0)
+        );
 ```
-
-\- depending on the value of `power\_pin` the corresponding pin is powered, or none, when not 1 or 2.
-
+- depending on the value of `power_pin` the corresponding pin is powered, or none, when not 1 or 2.
 ```
-
-&#x20;   if (mp\_obj\_get\_int(power\_pin\_in) == 1) {
-
-&#x20;      pbio\_port\_p1p2\_set\_power(self->port, PBIO\_PORT\_POWER\_REQUIREMENTS\_BATTERY\_VOLTAGE\_P1\_POS);
-
-&#x20;   } else if (mp\_obj\_get\_int(power\_pin\_in) == 2) {
-
-&#x20;      pbio\_port\_p1p2\_set\_power(self->port, PBIO\_PORT\_POWER\_REQUIREMENTS\_BATTERY\_VOLTAGE\_P2\_POS);
-
-&#x20;   } else
-
-&#x20;      pbio\_port\_p1p2\_set\_power(self->port, PBIO\_PORT\_POWER\_REQUIREMENTS\_NONE);
-
+    if (mp_obj_get_int(power_pin_in) == 1) {
+       pbio_port_p1p2_set_power(self->port, PBIO_PORT_POWER_REQUIREMENTS_BATTERY_VOLTAGE_P1_POS);
+    } else if (mp_obj_get_int(power_pin_in) == 2) {
+       pbio_port_p1p2_set_power(self->port, PBIO_PORT_POWER_REQUIREMENTS_BATTERY_VOLTAGE_P2_POS);
+    } else
+       pbio_port_p1p2_set_power(self->port, PBIO_PORT_POWER_REQUIREMENTS_NONE);
 ```
-
-
 
 <details>
-
-<summary> Click triangle to see the full code with changes for pb\_type\_uart\_device.c </summary>
-
-
+<summary> Click triangle to see the full code with changes for pb_type_uart_device.c </summary>
 
 ```
-
-/pybricks-micropython/pybricks/iodevices/pb\_type\_uart\_device.c
-
+/pybricks-micropython/pybricks/iodevices/pb_type_uart_device.c
 ```
 
-
-
 ```
-
 // SPDX-License-Identifier: MIT
-
 // Copyright (c) 2018-2025 The Pybricks Authors
 
+#include "py/mpconfig.h"
+
+#if PYBRICKS_PY_IODEVICES
+
+#include "py/mphal.h"
+#include "py/objstr.h"
+#include "py/runtime.h"
+
+#include <pbdrv/uart.h>
+#include <pbio/port_interface.h>
+
+#include <pybricks/common.h>
+#include <pybricks/parameters.h>
+#include <pybricks/tools/pb_type_async.h>
+
+#include <pybricks/util_mp/pb_kwarg_helper.h>
+#include <pybricks/util_mp/pb_obj_helper.h>
+#include <pybricks/util_pb/pb_error.h>
+
+// pybricks.iodevices.uart_device class object
+typedef struct _pb_type_uart_device_obj_t {
+    mp_obj_base_t base;
+    pbio_port_t *port;
+    pbdrv_uart_dev_t *uart_dev;
+    uint32_t timeout;
+    pb_type_async_t *write_iter;
+    mp_obj_t write_obj;
+    pb_type_async_t *read_iter;
+    mp_obj_str_t *read_obj;
+    const byte *wait_data;
+    size_t wait_len;
+} pb_type_uart_device_obj_t;
+
+// pybricks.iodevices.UARTDevice.set_baudrate
+static mp_obj_t pb_type_uart_device_set_baudrate(mp_obj_t self_in, mp_obj_t baudrate_in) {
+    pb_type_uart_device_obj_t *self = MP_OBJ_TO_PTR(self_in);
+
+    int32_t baud_rate = pb_obj_get_int(baudrate_in);
+    if (baud_rate < 1) {
+        pb_assert(PBIO_ERROR_INVALID_ARG);
+    }
+    pbdrv_uart_set_baud_rate(self->uart_dev, baud_rate);
+    return mp_const_none;
+}
+static MP_DEFINE_CONST_FUN_OBJ_2(pb_type_uart_device_set_baudrate_obj, pb_type_uart_device_set_baudrate);
 
 
-\#include "py/mpconfig.h"
+// pybricks.iodevices.UARTDevice.__init__
+static mp_obj_t pb_type_uart_device_make_new(const mp_obj_type_t *type, size_t n_args, size_t n_kw, const mp_obj_t *args) {
+    PB_PARSE_ARGS_CLASS(n_args, n_kw, args,
+        PB_ARG_REQUIRED(port),
+        PB_ARG_DEFAULT_INT(baudrate, 115200),
+        PB_ARG_DEFAULT_NONE(timeout),
+        PB_ARG_DEFAULT_INT(power_pin, 0)
+        );
+    // Get device, which inits UART port
+    pb_type_uart_device_obj_t *self = mp_obj_malloc(pb_type_uart_device_obj_t, type);
 
+    if (timeout_in == mp_const_none) {
+        // In the uart driver implementation, 0 means no timeout.
+        self->timeout = 0;
+    } else {
+        // Timeout of 0 is often perceived as partial read if the requested
+        // number of bytes is not available. This is not supported, so don't
+        // make it appear that way.
+        if (pb_obj_get_int(timeout_in) < 1) {
+            pb_assert(PBIO_ERROR_INVALID_ARG);
+        }
+        self->timeout = pb_obj_get_int(timeout_in);
+    }
 
+    pbio_port_id_t port_id = pb_type_enum_get_value(port_in, &pb_enum_type_Port);
+    pb_assert(pbio_port_get_port(port_id, &self->port));
+    pbio_port_set_mode(self->port, PBIO_PORT_MODE_UART);
 
-\#if PYBRICKS\_PY\_IODEVICES
+    if (mp_obj_get_int(power_pin_in) == 1) {
+       pbio_port_p1p2_set_power(self->port, PBIO_PORT_POWER_REQUIREMENTS_BATTERY_VOLTAGE_P1_POS);
+    } else if (mp_obj_get_int(power_pin_in) == 2) {
+       pbio_port_p1p2_set_power(self->port, PBIO_PORT_POWER_REQUIREMENTS_BATTERY_VOLTAGE_P2_POS);
+    } else
+       pbio_port_p1p2_set_power(self->port, PBIO_PORT_POWER_REQUIREMENTS_NONE);
 
+    pb_assert(pbio_port_get_uart_dev(self->port, &self->uart_dev));
+    pb_type_uart_device_set_baudrate(MP_OBJ_FROM_PTR(self), baudrate_in);
+    pbdrv_uart_flush(self->uart_dev);
 
+    // Awaitables associated with reading and writing.
+    self->write_iter = NULL;
+    self->read_iter = NULL;
+    self->wait_len = 0;
 
-\#include "py/mphal.h"
-
-\#include "py/objstr.h"
-
-\#include "py/runtime.h"
-
-
-
-\#include <pbdrv/uart.h>
-
-\#include <pbio/port\_interface.h>
-
-
-
-\#include <pybricks/common.h>
-
-\#include <pybricks/parameters.h>
-
-\#include <pybricks/tools/pb\_type\_async.h>
-
-
-
-\#include <pybricks/util\_mp/pb\_kwarg\_helper.h>
-
-\#include <pybricks/util\_mp/pb\_obj\_helper.h>
-
-\#include <pybricks/util\_pb/pb\_error.h>
-
-
-
-// pybricks.iodevices.uart\_device class object
-
-typedef struct \_pb\_type\_uart\_device\_obj\_t {
-
-&#x20;   mp\_obj\_base\_t base;
-
-&#x20;   pbio\_port\_t \*port;
-
-&#x20;   pbdrv\_uart\_dev\_t \*uart\_dev;
-
-&#x20;   uint32\_t timeout;
-
-&#x20;   pb\_type\_async\_t \*write\_iter;
-
-&#x20;   mp\_obj\_t write\_obj;
-
-&#x20;   pb\_type\_async\_t \*read\_iter;
-
-&#x20;   mp\_obj\_str\_t \*read\_obj;
-
-&#x20;   const byte \*wait\_data;
-
-&#x20;   size\_t wait\_len;
-
-} pb\_type\_uart\_device\_obj\_t;
-
-
-
-// pybricks.iodevices.UARTDevice.set\_baudrate
-
-static mp\_obj\_t pb\_type\_uart\_device\_set\_baudrate(mp\_obj\_t self\_in, mp\_obj\_t baudrate\_in) {
-
-&#x20;   pb\_type\_uart\_device\_obj\_t \*self = MP\_OBJ\_TO\_PTR(self\_in);
-
-
-
-&#x20;   int32\_t baud\_rate = pb\_obj\_get\_int(baudrate\_in);
-
-&#x20;   if (baud\_rate < 1) {
-
-&#x20;       pb\_assert(PBIO\_ERROR\_INVALID\_ARG);
-
-&#x20;   }
-
-&#x20;   pbdrv\_uart\_set\_baud\_rate(self->uart\_dev, baud\_rate);
-
-&#x20;   return mp\_const\_none;
-
+    return MP_OBJ_FROM_PTR(self);
 }
 
-static MP\_DEFINE\_CONST\_FUN\_OBJ\_2(pb\_type\_uart\_device\_set\_baudrate\_obj, pb\_type\_uart\_device\_set\_baudrate);
-
-
-
-
-
-// pybricks.iodevices.UARTDevice.\_\_init\_\_
-
-static mp\_obj\_t pb\_type\_uart\_device\_make\_new(const mp\_obj\_type\_t \*type, size\_t n\_args, size\_t n\_kw, const mp\_obj\_t \*args) {
-
-&#x20;   PB\_PARSE\_ARGS\_CLASS(n\_args, n\_kw, args,
-
-&#x20;       PB\_ARG\_REQUIRED(port),
-
-&#x20;       PB\_ARG\_DEFAULT\_INT(baudrate, 115200),
-
-&#x20;       PB\_ARG\_DEFAULT\_NONE(timeout),
-
-&#x20;       PB\_ARG\_DEFAULT\_INT(power\_pin, 0)
-
-&#x20;       );
-
-&#x20;   // Get device, which inits UART port
-
-&#x20;   pb\_type\_uart\_device\_obj\_t \*self = mp\_obj\_malloc(pb\_type\_uart\_device\_obj\_t, type);
-
-
-
-&#x20;   if (timeout\_in == mp\_const\_none) {
-
-&#x20;       // In the uart driver implementation, 0 means no timeout.
-
-&#x20;       self->timeout = 0;
-
-&#x20;   } else {
-
-&#x20;       // Timeout of 0 is often perceived as partial read if the requested
-
-&#x20;       // number of bytes is not available. This is not supported, so don't
-
-&#x20;       // make it appear that way.
-
-&#x20;       if (pb\_obj\_get\_int(timeout\_in) < 1) {
-
-&#x20;           pb\_assert(PBIO\_ERROR\_INVALID\_ARG);
-
-&#x20;       }
-
-&#x20;       self->timeout = pb\_obj\_get\_int(timeout\_in);
-
-&#x20;   }
-
-
-
-&#x20;   pbio\_port\_id\_t port\_id = pb\_type\_enum\_get\_value(port\_in, \&pb\_enum\_type\_Port);
-
-&#x20;   pb\_assert(pbio\_port\_get\_port(port\_id, \&self->port));
-
-&#x20;   pbio\_port\_set\_mode(self->port, PBIO\_PORT\_MODE\_UART);
-
-
-
-&#x20;   if (mp\_obj\_get\_int(power\_pin\_in) == 1) {
-
-&#x20;      pbio\_port\_p1p2\_set\_power(self->port, PBIO\_PORT\_POWER\_REQUIREMENTS\_BATTERY\_VOLTAGE\_P1\_POS);
-
-&#x20;   } else if (mp\_obj\_get\_int(power\_pin\_in) == 2) {
-
-&#x20;      pbio\_port\_p1p2\_set\_power(self->port, PBIO\_PORT\_POWER\_REQUIREMENTS\_BATTERY\_VOLTAGE\_P2\_POS);
-
-&#x20;   } else
-
-&#x20;      pbio\_port\_p1p2\_set\_power(self->port, PBIO\_PORT\_POWER\_REQUIREMENTS\_NONE);
-
-
-
-&#x20;   pb\_assert(pbio\_port\_get\_uart\_dev(self->port, \&self->uart\_dev));
-
-&#x20;   pb\_type\_uart\_device\_set\_baudrate(MP\_OBJ\_FROM\_PTR(self), baudrate\_in);
-
-&#x20;   pbdrv\_uart\_flush(self->uart\_dev);
-
-
-
-&#x20;   // Awaitables associated with reading and writing.
-
-&#x20;   self->write\_iter = NULL;
-
-&#x20;   self->read\_iter = NULL;
-
-&#x20;   self->wait\_len = 0;
-
-
-
-&#x20;   return MP\_OBJ\_FROM\_PTR(self);
-
+static pbio_error_t pb_type_uart_device_write_iter_once(pbio_os_state_t *state, mp_obj_t self_in) {
+    pb_type_uart_device_obj_t *self = MP_OBJ_TO_PTR(self_in);
+    GET_STR_DATA_LEN(self->write_obj, data, data_len);
+    return pbdrv_uart_write(state, self->uart_dev, (uint8_t *)data, data_len, self->timeout);
 }
 
-
-
-static pbio\_error\_t pb\_type\_uart\_device\_write\_iter\_once(pbio\_os\_state\_t \*state, mp\_obj\_t self\_in) {
-
-&#x20;   pb\_type\_uart\_device\_obj\_t \*self = MP\_OBJ\_TO\_PTR(self\_in);
-
-&#x20;   GET\_STR\_DATA\_LEN(self->write\_obj, data, data\_len);
-
-&#x20;   return pbdrv\_uart\_write(state, self->uart\_dev, (uint8\_t \*)data, data\_len, self->timeout);
-
+static mp_obj_t pb_type_uart_device_write_return_map(mp_obj_t self_in) {
+    pb_type_uart_device_obj_t *self = MP_OBJ_TO_PTR(self_in);
+    // Write always returns none, but this is effectively a completion callback.
+    // So we can use it to disconnect the write object so it can be garbage collected.
+    self->write_obj = MP_OBJ_NULL;
+    return mp_const_none;
 }
-
-
-
-static mp\_obj\_t pb\_type\_uart\_device\_write\_return\_map(mp\_obj\_t self\_in) {
-
-&#x20;   pb\_type\_uart\_device\_obj\_t \*self = MP\_OBJ\_TO\_PTR(self\_in);
-
-&#x20;   // Write always returns none, but this is effectively a completion callback.
-
-&#x20;   // So we can use it to disconnect the write object so it can be garbage collected.
-
-&#x20;   self->write\_obj = MP\_OBJ\_NULL;
-
-&#x20;   return mp\_const\_none;
-
-}
-
-
 
 // pybricks.iodevices.UARTDevice.write
+static mp_obj_t pb_type_uart_device_write(size_t n_args, const mp_obj_t *pos_args, mp_map_t *kw_args) {
 
-static mp\_obj\_t pb\_type\_uart\_device\_write(size\_t n\_args, const mp\_obj\_t \*pos\_args, mp\_map\_t \*kw\_args) {
+    PB_PARSE_ARGS_METHOD(n_args, pos_args, kw_args,
+        pb_type_uart_device_obj_t, self,
+        PB_ARG_REQUIRED(data));
 
+    // Assert that data argument are bytes
+    if (!(mp_obj_is_str_or_bytes(data_in) || mp_obj_is_type(data_in, &mp_type_bytearray))) {
+        pb_assert(PBIO_ERROR_INVALID_ARG);
+    }
 
+    // Prevents this object from being garbage collected while the write is in progress.
+    self->write_obj = data_in;
 
-&#x20;   PB\_PARSE\_ARGS\_METHOD(n\_args, pos\_args, kw\_args,
-
-&#x20;       pb\_type\_uart\_device\_obj\_t, self,
-
-&#x20;       PB\_ARG\_REQUIRED(data));
-
-
-
-&#x20;   // Assert that data argument are bytes
-
-&#x20;   if (!(mp\_obj\_is\_str\_or\_bytes(data\_in) || mp\_obj\_is\_type(data\_in, \&mp\_type\_bytearray))) {
-
-&#x20;       pb\_assert(PBIO\_ERROR\_INVALID\_ARG);
-
-&#x20;   }
-
-
-
-&#x20;   // Prevents this object from being garbage collected while the write is in progress.
-
-&#x20;   self->write\_obj = data\_in;
-
-
-
-&#x20;   pb\_type\_async\_t config = {
-
-&#x20;       .iter\_once = pb\_type\_uart\_device\_write\_iter\_once,
-
-&#x20;       .parent\_obj = MP\_OBJ\_FROM\_PTR(self),
-
-&#x20;       .return\_map = pb\_type\_uart\_device\_write\_return\_map,
-
-&#x20;   };
-
-&#x20;   return pb\_type\_async\_wait\_or\_await(\&config, \&self->write\_iter, true);
-
+    pb_type_async_t config = {
+        .iter_once = pb_type_uart_device_write_iter_once,
+        .parent_obj = MP_OBJ_FROM_PTR(self),
+        .return_map = pb_type_uart_device_write_return_map,
+    };
+    return pb_type_async_wait_or_await(&config, &self->write_iter, true);
 }
-
-static MP\_DEFINE\_CONST\_FUN\_OBJ\_KW(pb\_type\_uart\_device\_write\_obj, 1, pb\_type\_uart\_device\_write);
-
-
+static MP_DEFINE_CONST_FUN_OBJ_KW(pb_type_uart_device_write_obj, 1, pb_type_uart_device_write);
 
 // pybricks.iodevices.UARTDevice.waiting
+static mp_obj_t pb_type_uart_device_waiting(mp_obj_t self_in) {
+    pb_type_uart_device_obj_t *self = MP_OBJ_TO_PTR(self_in);
+    return mp_obj_new_int(pbdrv_uart_in_waiting(self->uart_dev));
+}
+static MP_DEFINE_CONST_FUN_OBJ_1(pb_type_uart_device_waiting_obj, pb_type_uart_device_waiting);
 
-static mp\_obj\_t pb\_type\_uart\_device\_waiting(mp\_obj\_t self\_in) {
-
-&#x20;   pb\_type\_uart\_device\_obj\_t \*self = MP\_OBJ\_TO\_PTR(self\_in);
-
-&#x20;   return mp\_obj\_new\_int(pbdrv\_uart\_in\_waiting(self->uart\_dev));
-
+static pbio_error_t pb_type_uart_device_read_iter_once(pbio_os_state_t *state, mp_obj_t self_in) {
+    pb_type_uart_device_obj_t *self = MP_OBJ_TO_PTR(self_in);
+    return pbdrv_uart_read(state, self->uart_dev, (uint8_t *)self->read_obj->data, self->read_obj->len, self->timeout);
 }
 
-static MP\_DEFINE\_CONST\_FUN\_OBJ\_1(pb\_type\_uart\_device\_waiting\_obj, pb\_type\_uart\_device\_waiting);
-
-
-
-static pbio\_error\_t pb\_type\_uart\_device\_read\_iter\_once(pbio\_os\_state\_t \*state, mp\_obj\_t self\_in) {
-
-&#x20;   pb\_type\_uart\_device\_obj\_t \*self = MP\_OBJ\_TO\_PTR(self\_in);
-
-&#x20;   return pbdrv\_uart\_read(state, self->uart\_dev, (uint8\_t \*)self->read\_obj->data, self->read\_obj->len, self->timeout);
-
+static mp_obj_t pb_type_uart_device_read_return_map(mp_obj_t self_in) {
+    pb_type_uart_device_obj_t *self = MP_OBJ_TO_PTR(self_in);
+    mp_obj_str_t *result = self->read_obj;
+    self->read_obj = NULL;
+    return pb_obj_new_bytes_finish(result);
 }
-
-
-
-static mp\_obj\_t pb\_type\_uart\_device\_read\_return\_map(mp\_obj\_t self\_in) {
-
-&#x20;   pb\_type\_uart\_device\_obj\_t \*self = MP\_OBJ\_TO\_PTR(self\_in);
-
-&#x20;   mp\_obj\_str\_t \*result = self->read\_obj;
-
-&#x20;   self->read\_obj = NULL;
-
-&#x20;   return pb\_obj\_new\_bytes\_finish(result);
-
-}
-
-
 
 // pybricks.iodevices.UARTDevice.read
+static mp_obj_t pb_type_uart_device_read(size_t n_args, const mp_obj_t *pos_args, mp_map_t *kw_args) {
 
-static mp\_obj\_t pb\_type\_uart\_device\_read(size\_t n\_args, const mp\_obj\_t \*pos\_args, mp\_map\_t \*kw\_args) {
+    PB_PARSE_ARGS_METHOD(n_args, pos_args, kw_args,
+        pb_type_uart_device_obj_t, self,
+        PB_ARG_DEFAULT_INT(length, 1));
 
+    // Allocate new buffer that we'll read into.
+    self->read_obj = pb_obj_new_bytes_prepare(pb_obj_get_positive_int(length_in));
 
-
-&#x20;   PB\_PARSE\_ARGS\_METHOD(n\_args, pos\_args, kw\_args,
-
-&#x20;       pb\_type\_uart\_device\_obj\_t, self,
-
-&#x20;       PB\_ARG\_DEFAULT\_INT(length, 1));
-
-
-
-&#x20;   // Allocate new buffer that we'll read into.
-
-&#x20;   self->read\_obj = pb\_obj\_new\_bytes\_prepare(pb\_obj\_get\_positive\_int(length\_in));
-
-
-
-&#x20;   pb\_type\_async\_t config = {
-
-&#x20;       .iter\_once = pb\_type\_uart\_device\_read\_iter\_once,
-
-&#x20;       .parent\_obj = MP\_OBJ\_FROM\_PTR(self),
-
-&#x20;       .return\_map = pb\_type\_uart\_device\_read\_return\_map,
-
-&#x20;   };
-
-&#x20;   return pb\_type\_async\_wait\_or\_await(\&config, \&self->read\_iter, true);
-
+    pb_type_async_t config = {
+        .iter_once = pb_type_uart_device_read_iter_once,
+        .parent_obj = MP_OBJ_FROM_PTR(self),
+        .return_map = pb_type_uart_device_read_return_map,
+    };
+    return pb_type_async_wait_or_await(&config, &self->read_iter, true);
 }
+static MP_DEFINE_CONST_FUN_OBJ_KW(pb_type_uart_device_read_obj, 1, pb_type_uart_device_read);
 
-static MP\_DEFINE\_CONST\_FUN\_OBJ\_KW(pb\_type\_uart\_device\_read\_obj, 1, pb\_type\_uart\_device\_read);
+// pybricks.iodevices.UARTDevice.read_all
+static mp_obj_t pb_type_uart_device_read_all(mp_obj_t self_in) {
 
+    pb_type_uart_device_obj_t *self = MP_OBJ_TO_PTR(self_in);
+    uint32_t in_waiting = pbdrv_uart_in_waiting(self->uart_dev);
 
+    if (in_waiting == 0) {
+        return mp_const_empty_bytes;
+    }
 
-// pybricks.iodevices.UARTDevice.read\_all
+    mp_obj_str_t *result = pb_obj_new_bytes_prepare(in_waiting);
 
-static mp\_obj\_t pb\_type\_uart\_device\_read\_all(mp\_obj\_t self\_in) {
+    // We know we can read this in one go, so all data will be copied without
+    // intermediate yields.
+    pbio_os_state_t state = 0;
+    pb_assert(pbdrv_uart_read(&state, self->uart_dev, (uint8_t *)result->data, in_waiting, 0));
 
-
-
-&#x20;   pb\_type\_uart\_device\_obj\_t \*self = MP\_OBJ\_TO\_PTR(self\_in);
-
-&#x20;   uint32\_t in\_waiting = pbdrv\_uart\_in\_waiting(self->uart\_dev);
-
-
-
-&#x20;   if (in\_waiting == 0) {
-
-&#x20;       return mp\_const\_empty\_bytes;
-
-&#x20;   }
-
-
-
-&#x20;   mp\_obj\_str\_t \*result = pb\_obj\_new\_bytes\_prepare(in\_waiting);
-
-
-
-&#x20;   // We know we can read this in one go, so all data will be copied without
-
-&#x20;   // intermediate yields.
-
-&#x20;   pbio\_os\_state\_t state = 0;
-
-&#x20;   pb\_assert(pbdrv\_uart\_read(\&state, self->uart\_dev, (uint8\_t \*)result->data, in\_waiting, 0));
-
-
-
-&#x20;   return pb\_obj\_new\_bytes\_finish(result);
-
+    return pb_obj_new_bytes_finish(result);
 }
-
-static MP\_DEFINE\_CONST\_FUN\_OBJ\_1(pb\_type\_uart\_device\_read\_all\_obj, pb\_type\_uart\_device\_read\_all);
-
-
+static MP_DEFINE_CONST_FUN_OBJ_1(pb_type_uart_device_read_all_obj, pb_type_uart_device_read_all);
 
 // pybricks.iodevices.UARTDevice.clear
-
-static mp\_obj\_t pb\_type\_uart\_device\_clear(mp\_obj\_t self\_in) {
-
-&#x20;   pb\_type\_uart\_device\_obj\_t \*self = MP\_OBJ\_TO\_PTR(self\_in);
-
-&#x20;   pbdrv\_uart\_flush(self->uart\_dev);
-
-&#x20;   return mp\_const\_none;
-
+static mp_obj_t pb_type_uart_device_clear(mp_obj_t self_in) {
+    pb_type_uart_device_obj_t *self = MP_OBJ_TO_PTR(self_in);
+    pbdrv_uart_flush(self->uart_dev);
+    return mp_const_none;
 }
+static MP_DEFINE_CONST_FUN_OBJ_1(pb_type_uart_device_clear_obj, pb_type_uart_device_clear);
 
-static MP\_DEFINE\_CONST\_FUN\_OBJ\_1(pb\_type\_uart\_device\_clear\_obj, pb\_type\_uart\_device\_clear);
+static pbio_error_t pb_type_uart_device_wait_until_iter_once(pbio_os_state_t *state, mp_obj_t self_in) {
 
-
-
-static pbio\_error\_t pb\_type\_uart\_device\_wait\_until\_iter\_once(pbio\_os\_state\_t \*state, mp\_obj\_t self\_in) {
-
-
-
-&#x20;   pb\_type\_uart\_device\_obj\_t \*self = MP\_OBJ\_TO\_PTR(self\_in);
-
-
+    pb_type_uart_device_obj_t *self = MP_OBJ_TO_PTR(self_in);
 
 retry:
 
+    // Yield if not enough to read yet.
+    if (pbdrv_uart_in_waiting(self->uart_dev) < self->wait_len) {
+        return PBIO_ERROR_AGAIN;
+    }
 
+    // We can read the full amount of bytes without blocking now.
+    for (size_t i = 0; i < self->wait_len; i++) {
+        // Read at most one byte since the viewing window may not overlap pattern.
+        pbio_os_state_t sub = 0;
+        uint8_t rx;
+        pb_assert(pbdrv_uart_read(&sub, self->uart_dev, &rx, 1, 0));
 
-&#x20;   // Yield if not enough to read yet.
-
-&#x20;   if (pbdrv\_uart\_in\_waiting(self->uart\_dev) < self->wait\_len) {
-
-&#x20;       return PBIO\_ERROR\_AGAIN;
-
-&#x20;   }
-
-
-
-&#x20;   // We can read the full amount of bytes without blocking now.
-
-&#x20;   for (size\_t i = 0; i < self->wait\_len; i++) {
-
-&#x20;       // Read at most one byte since the viewing window may not overlap pattern.
-
-&#x20;       pbio\_os\_state\_t sub = 0;
-
-&#x20;       uint8\_t rx;
-
-&#x20;       pb\_assert(pbdrv\_uart\_read(\&sub, self->uart\_dev, \&rx, 1, 0));
-
-
-
-&#x20;       if (rx != self->wait\_data\[i]) {
-
-&#x20;           // Not the character we expected, so start over, yielding if there
-
-&#x20;           // is not enough to read.
-
-&#x20;           goto retry;
-
-&#x20;       }
-
-&#x20;   }
-
-&#x20;   return PBIO\_SUCCESS;
-
+        if (rx != self->wait_data[i]) {
+            // Not the character we expected, so start over, yielding if there
+            // is not enough to read.
+            goto retry;
+        }
+    }
+    return PBIO_SUCCESS;
 }
 
-
-
-static mp\_obj\_t pb\_type\_uart\_device\_wait\_until\_return\_map(mp\_obj\_t self\_in) {
-
-&#x20;   pb\_type\_uart\_device\_obj\_t \*self = MP\_OBJ\_TO\_PTR(self\_in);
-
-&#x20;   self->wait\_len = 0;
-
-&#x20;   self->wait\_data = NULL;
-
-&#x20;   return mp\_const\_none;
-
+static mp_obj_t pb_type_uart_device_wait_until_return_map(mp_obj_t self_in) {
+    pb_type_uart_device_obj_t *self = MP_OBJ_TO_PTR(self_in);
+    self->wait_len = 0;
+    self->wait_data = NULL;
+    return mp_const_none;
 }
 
+static mp_obj_t pb_type_uart_device_wait_until(mp_obj_t self_in, mp_obj_t pattern_in) {
 
+    pb_type_uart_device_obj_t *self = MP_OBJ_TO_PTR(self_in);
 
-static mp\_obj\_t pb\_type\_uart\_device\_wait\_until(mp\_obj\_t self\_in, mp\_obj\_t pattern\_in) {
+    if (self->wait_len) {
+        pb_assert(PBIO_ERROR_BUSY);
+    }
 
+    self->wait_data = (const uint8_t *)mp_obj_str_get_data(pattern_in, &self->wait_len);
+    if (self->wait_len == 0) {
+        pb_assert(PBIO_ERROR_INVALID_ARG);
+    }
 
-
-&#x20;   pb\_type\_uart\_device\_obj\_t \*self = MP\_OBJ\_TO\_PTR(self\_in);
-
-
-
-&#x20;   if (self->wait\_len) {
-
-&#x20;       pb\_assert(PBIO\_ERROR\_BUSY);
-
-&#x20;   }
-
-
-
-&#x20;   self->wait\_data = (const uint8\_t \*)mp\_obj\_str\_get\_data(pattern\_in, \&self->wait\_len);
-
-&#x20;   if (self->wait\_len == 0) {
-
-&#x20;       pb\_assert(PBIO\_ERROR\_INVALID\_ARG);
-
-&#x20;   }
-
-
-
-&#x20;   pb\_type\_async\_t config = {
-
-&#x20;       .iter\_once = pb\_type\_uart\_device\_wait\_until\_iter\_once,
-
-&#x20;       .parent\_obj = MP\_OBJ\_FROM\_PTR(self),
-
-&#x20;       .return\_map = pb\_type\_uart\_device\_wait\_until\_return\_map,
-
-&#x20;   };
-
-&#x20;   return pb\_type\_async\_wait\_or\_await(\&config, \&self->read\_iter, true);
-
+    pb_type_async_t config = {
+        .iter_once = pb_type_uart_device_wait_until_iter_once,
+        .parent_obj = MP_OBJ_FROM_PTR(self),
+        .return_map = pb_type_uart_device_wait_until_return_map,
+    };
+    return pb_type_async_wait_or_await(&config, &self->read_iter, true);
 }
+static MP_DEFINE_CONST_FUN_OBJ_2(pb_type_uart_device_wait_until_obj, pb_type_uart_device_wait_until);
 
-static MP\_DEFINE\_CONST\_FUN\_OBJ\_2(pb\_type\_uart\_device\_wait\_until\_obj, pb\_type\_uart\_device\_wait\_until);
-
-
-
-// dir(pybricks.iodevices.uart\_device)
-
-static const mp\_rom\_map\_elem\_t pb\_type\_uart\_device\_locals\_dict\_table\[] = {
-
-&#x20;   { MP\_ROM\_QSTR(MP\_QSTR\_read),         MP\_ROM\_PTR(\&pb\_type\_uart\_device\_read\_obj)         },
-
-&#x20;   { MP\_ROM\_QSTR(MP\_QSTR\_read\_all),     MP\_ROM\_PTR(\&pb\_type\_uart\_device\_read\_all\_obj)     },
-
-&#x20;   { MP\_ROM\_QSTR(MP\_QSTR\_write),        MP\_ROM\_PTR(\&pb\_type\_uart\_device\_write\_obj)        },
-
-&#x20;   { MP\_ROM\_QSTR(MP\_QSTR\_waiting),      MP\_ROM\_PTR(\&pb\_type\_uart\_device\_waiting\_obj)      },
-
-&#x20;   { MP\_ROM\_QSTR(MP\_QSTR\_wait\_until),   MP\_ROM\_PTR(\&pb\_type\_uart\_device\_wait\_until\_obj)   },
-
-&#x20;   { MP\_ROM\_QSTR(MP\_QSTR\_set\_baudrate), MP\_ROM\_PTR(\&pb\_type\_uart\_device\_set\_baudrate\_obj) },
-
-&#x20;   { MP\_ROM\_QSTR(MP\_QSTR\_clear),        MP\_ROM\_PTR(\&pb\_type\_uart\_device\_clear\_obj)        },
-
+// dir(pybricks.iodevices.uart_device)
+static const mp_rom_map_elem_t pb_type_uart_device_locals_dict_table[] = {
+    { MP_ROM_QSTR(MP_QSTR_read),         MP_ROM_PTR(&pb_type_uart_device_read_obj)         },
+    { MP_ROM_QSTR(MP_QSTR_read_all),     MP_ROM_PTR(&pb_type_uart_device_read_all_obj)     },
+    { MP_ROM_QSTR(MP_QSTR_write),        MP_ROM_PTR(&pb_type_uart_device_write_obj)        },
+    { MP_ROM_QSTR(MP_QSTR_waiting),      MP_ROM_PTR(&pb_type_uart_device_waiting_obj)      },
+    { MP_ROM_QSTR(MP_QSTR_wait_until),   MP_ROM_PTR(&pb_type_uart_device_wait_until_obj)   },
+    { MP_ROM_QSTR(MP_QSTR_set_baudrate), MP_ROM_PTR(&pb_type_uart_device_set_baudrate_obj) },
+    { MP_ROM_QSTR(MP_QSTR_clear),        MP_ROM_PTR(&pb_type_uart_device_clear_obj)        },
 };
+static MP_DEFINE_CONST_DICT(pb_type_uart_device_locals_dict, pb_type_uart_device_locals_dict_table);
 
-static MP\_DEFINE\_CONST\_DICT(pb\_type\_uart\_device\_locals\_dict, pb\_type\_uart\_device\_locals\_dict\_table);
+// type(pybricks.iodevices.uart_device)
+MP_DEFINE_CONST_OBJ_TYPE(pb_type_uart_device,
+    MP_QSTR_uart_device,
+    MP_TYPE_FLAG_NONE,
+    make_new, pb_type_uart_device_make_new,
+    locals_dict, &pb_type_uart_device_locals_dict);
 
-
-
-// type(pybricks.iodevices.uart\_device)
-
-MP\_DEFINE\_CONST\_OBJ\_TYPE(pb\_type\_uart\_device,
-
-&#x20;   MP\_QSTR\_uart\_device,
-
-&#x20;   MP\_TYPE\_FLAG\_NONE,
-
-&#x20;   make\_new, pb\_type\_uart\_device\_make\_new,
-
-&#x20;   locals\_dict, \&pb\_type\_uart\_device\_locals\_dict);
-
-
-
-\#endif // PYBRICKS\_PY\_IODEVICES
-
-
+#endif // PYBRICKS_PY_IODEVICES
 
 ```
 
-
-
 </details>
-
-
-
