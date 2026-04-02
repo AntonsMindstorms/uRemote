@@ -11,7 +11,7 @@ to sen {
   return ('[data:asByteArray]' _line_data)
 }
 
-script 636 102 {
+script 636 50 {
 whenStarted
 init
 'line init'
@@ -27,50 +27,50 @@ forever {
 }
 }
 
-script 259 133 {
+script 259 81 {
 comment 'click here to see values of sensors'
 }
 
-script 291 168 ('read line')
+script 291 116 ('read line')
 
-script 960 168 {
+script 960 116 {
 process
 }
 
-script 236 229 {
+script 236 177 {
 comment 'start calibration, blue led flashing'
 command 'calibrate'
 }
 
-script 240 322 {
+script 240 270 {
 comment 'choose calibrated values'
 command 'mode calibrated'
 }
 
-script 1078 354 {
+script 1078 302 {
 comment 'plot position and derivative'
 graphIt (position) ('line position derative')
 comment 'shape: |, <, >, T Y or '' '' (space=no line)'
 sayIt ('[data:unicodeString]' ('line sensor shape'))
 }
 
-script 242 424 {
+script 242 372 {
 comment 'choose raw values'
 command 'mode raw'
 }
 
-script 665 483 {
+script 665 431 {
 comment 'open graph to see position and derivative'
 }
 
-script 238 515 {
+script 238 463 {
 comment 'invert line sensor values'
 'line sensor invert' true
 }
 
-script 119 532 (v <Reporter)
+script 119 480 (v <Reporter)
 
-script 599 566 {
+script 599 514 {
 comment 'EV3 program:
 
 
@@ -107,11 +107,11 @@ while 1:
             s=StopWatch()'
 }
 
-script 50 583 {
+script 50 531 {
 to sen {}
 }
 
-script 277 732 ('read line')
+script 277 680 ('read line')
 
 
 module 'Line Follower' Input

@@ -1,0 +1,82 @@
+module main
+author unknown
+version 1 0 
+description ''
+variables buf 
+
+  spec ' ' 'neopixel nr' 'neopixel nr _ _ _ _' 'auto auto auto auto' '10' '10' '10' '10'
+  spec 'r' 'read sensor' 'read sensor'
+
+to 'neopixel nr' nr r g b {
+  i2cSet (hexToInt '33') (hexToInt '50') nr
+  i2cSet (hexToInt '33') (hexToInt '51') r
+  i2cSet (hexToInt '33') (hexToInt '52') g
+  i2cSet (hexToInt '33') (hexToInt '53') b
+  i2cSet (hexToInt '33') (hexToInt '54') 1
+}
+
+to 'read sensor' {
+  local 'buf' ('[data:newByteArray]' 13)
+  for i 13 {
+    atPut i buf (i2cGet (hexToInt '33') i)
+  }
+  return buf
+}
+
+script 422 50 {
+comment '  REG_DATA_BASE        = 0x00, // 0x00..0x0C current data block
+
+  REG_MODE             = 0x10,
+  REG_STATUS           = 0x11,
+  REG_VERSION_MAJOR    = 0x12,
+  REG_VERSION_MINOR    = 0x13,
+  REG_LEDS_MODE        = 0x14,
+  REG_EMITTER          = 0x15,
+  REG_LOG_LEVEL        = 0x16,
+  REG_COMMAND          = 0x17,
+
+  REG_CAL_MIN_BASE     = 0x20, // 0x20..0x27
+  REG_CAL_MAX_BASE     = 0x28, // 0x28..0x2F
+
+  REG_CONFIG_BASE      = 0x30, // 0x30..0x35
+
+  REG_VALUE_INDEX      = 0x40,
+  REG_VALUE_DATA       = 0x41,
+
+  REG_NEOPIXEL_INDEX   = 0x50,
+  REG_NEOPIXEL_R       = 0x51,
+  REG_NEOPIXEL_G       = 0x52,
+  REG_NEOPIXEL_B       = 0x53,
+  REG_NEOPIXEL_APPLY   = 0x54,'
+}
+
+script 50 64 {
+'neopixel nr' 2 0 10 0
+}
+
+script 220 135 ('[sensors:i2cExists]' (hexToInt '33'))
+
+script 124 254 (i2cGet '' '')
+
+script 988 477 (v i)
+
+script 630 511 {
+i2cSet (hexToInt '33') (hexToInt '10') 3
+}
+
+script 84 533 {
+to 'neopixel nr' {}
+}
+
+script 739 577 (i2cGet (hexToInt '33') (hexToInt '0'))
+
+script 670 679 ('read sensor')
+
+script 50 777 {
+to 'read sensor' {}
+}
+
+script 496 838 {
+'[sensors:i2cRead]' (hexToInt '33') buf
+}
+
