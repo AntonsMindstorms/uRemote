@@ -257,6 +257,8 @@ class uRemote:
 
     def process(self):
         cmd, data = self.receive_command()
+        if not isinstance(data,tuple):
+            data=(data,)
         #print("recv ",cmd,data)
         if cmd != "!ERROR":
             if hasattr(__main__, cmd):
