@@ -14,16 +14,19 @@ except ImportError:
 STATUS_OK = const(0)
 STATUS_ERR = const(1)
 MAX_FRAME = const(255)
+MIN_FRAME = const(6)
+ESP32 = const(1)
+PYBRICKS = const(2)
 
 if sys.platform == 'esp32':
-    _platform = const(1)
+    _platform = ESP32
 else:
-    _platform = const(2)
+    _platform = PYBRICKS
 
 if _platform == 2:
     from pybricks.iodevices import UARTDevice
     from pybricks.parameters import Port
-    from pybricks.tools import StopWatch
+    from pybricks.tools import StopWatch, wait
     RX_PIN, TX_PIN = 0, 0
 else:
     import time
@@ -64,8 +67,10 @@ class uRemote:
         self.byte_timeout = 10
         self.wait_recv = wait_recv
         self._last_rx_error = None
+        if _platform == PYBRICKS:
+            self._watch = StopWatch()
 
-        if _platform == 2:
+        if _platform == PYBRICKS:
             self.uart = UARTDevice(port_or_uart, timeout=uart_timeout)
             self.uart.set_baudrate(baudrate)
         else:
@@ -77,15 +82,21 @@ class uRemote:
                 timeout=uart_timeout,
             )
 
-    def _now(self):
+    def _ticks(self):
         if _platform == 2:
-            return StopWatch()
+            return self._watch.time()
         return time.ticks_ms()
 
     def _elapsed(self, start):
         if _platform == 2:
-            return start.time()
+            return self._watch.time() - start
         return time.ticks_diff(time.ticks_ms(), start)
+
+    def _pause(self, ms):
+        if _platform == 1:
+            time.sleep_ms(ms)
+        else:
+            wait(ms)
 
     def _waiting(self):
         if _platform == 2:
@@ -94,6 +105,12 @@ class uRemote:
 
     def _read(self, n=1):
         return self.uart.read(n)
+
+    def _read_byte(self):
+        b = self._read(1)
+        if b:
+            return b[0]
+        return None
 
     def _read_all(self):
         if _platform == 2:
@@ -116,22 +133,29 @@ class uRemote:
 
     def receive_bytes(self):
         self._last_rx_error = None
-        start = self._now()
+        start = self._ticks()
 
         while self._elapsed(start) < self.wait_recv and self._waiting() == 0:
-            if _platform == 1:
-                time.sleep_ms(1)
+            self._pause(1)
 
         if self._waiting() == 0:
             self.flush()
             self._last_rx_error = "timeout: no length byte"
             return b''
 
-        length = self._read(1)[0]
+        length = self._read_byte()
+        if length is None:
+            self.flush()
+            self._last_rx_error = "timeout: no length byte"
+            return b''
+        if length < MIN_FRAME or length > MAX_FRAME:
+            self.flush()
+            self._last_rx_error = "invalid frame length"
+            return b''
 
         payload = bytearray()
-        total_start = self._now()
-        byte_start = self._now()
+        total_start = self._ticks()
+        byte_start = total_start
         preamble_index = 0
 
         while len(payload) < length:
@@ -141,25 +165,28 @@ class uRemote:
                 return b''
 
             if self._waiting():
-                b = self._read(1)
-                if b:
-                    payload.append(b[0])
+                b = self._read_byte()
+                if b is None:
+                    self.flush()
+                    self._last_rx_error = "timeout: incomplete frame"
+                    return b''
 
-                    if preamble_index < 4:
-                        if b[0] != PREAMBLE[preamble_index]:
-                            self.flush()
-                            self._last_rx_error = "preamble mismatch"
-                            return b''
-                        preamble_index += 1
+                payload.append(b)
 
-                    byte_start = self._now()
+                if preamble_index < 4:
+                    if b != PREAMBLE[preamble_index]:
+                        self.flush()
+                        self._last_rx_error = "preamble mismatch"
+                        return b''
+                    preamble_index += 1
+
+                byte_start = self._ticks()
             else:
                 if self._elapsed(byte_start) > self.byte_timeout:
                     self.flush()
                     self._last_rx_error = "timeout: inter-byte gap"
                     return b''
-                if _platform == 1:
-                    time.sleep_ms(1)
+                self._pause(1)
 
         return bytes(payload[4:])
 
@@ -232,10 +259,10 @@ class uRemote:
         self.send_command(cmd, *data)
         status, reply_cmd, payload = self.receive_command()
 
+        if status != STATUS_OK or not reply_cmd:
+            raise uRemoteError(payload if isinstance(payload, str) else str(payload))
         if reply_cmd != cmd:
             raise uRemoteError("unexpected reply: " + reply_cmd)
-        if status != STATUS_OK:
-            raise uRemoteError(payload if isinstance(payload, str) else str(payload))
 
         values = _as_values(payload)
         if len(values) == 0:
@@ -246,8 +273,8 @@ class uRemote:
 
     def process(self):
         status, cmd, data = self.receive_command()
-        
-        if status != STATUS_OK:
+
+        if status != STATUS_OK or not cmd:
             return
         if not isinstance(data, list):
             data = [data]
