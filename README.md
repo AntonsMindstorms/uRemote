@@ -1,4 +1,4 @@
-# uRemote for MicroBlocks (MicroRemote)
+# uRemote for MicroBlocks
 
 This library is a stripped-down version of the **UARTRemote** protocol, adapted for **MicroBlocks**.
 It provides a simple, reliable command-based communication protocol over UART.
@@ -74,7 +74,8 @@ Each data field consists of:
 
 Incoming UART data is read **one byte at a time** until a complete frame is received or a timeout occurs.
 
-- **Overall receive timeout:** `time_out`
+- **Overall receive timeout:** `wait_recv` (constructor argument, default 1000 ms)
+- **UART read timeout:** `uart_timeout` (constructor argument, default 1000 ms)
 - **Inter-byte timeout:** `byte_timeout` (fixed at 10 ms)
 
 ### Preamble Validation

@@ -20,6 +20,6 @@ for i in range(1000):
         #print(i,hex_str)
         cnt+=1
         #print(i,data)
-    except:
+    except Exception:
         print('error -------')
 print(s.time(),cnt)

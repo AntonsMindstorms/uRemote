@@ -182,14 +182,17 @@ to process {
   if (not ((size cmd_data) == 0)) {
     local 'cmd' (at 1 cmd_data)
     local 'data' (at 2 cmd_data)
-    local 'return' (callCustomReporter cmd data)
-    if (isType return 'boolean') {
-      return = ('[data:makeList]')
-    } (not (isType return 'list')) {
-      return = ('[data:makeList]' return)
+    if ('[vars:functionExists]' cmd) {
+      local 'return' (callCustomReporter cmd data)
+      if (not (isType return 'list')) {
+        return = ('[data:makeList]' return)
+      }
+      cmd = ('[data:join]' cmd '_ack')
+      '_send command' cmd return
+    } else {
+      cmd = ('[data:join]' cmd '_err')
+      '_send command' cmd ('handler not found')
     }
-    cmd = ('[data:join]' cmd '_ack')
-    '_send command' cmd return
   }
 }
 

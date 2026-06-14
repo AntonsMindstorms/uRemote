@@ -8,7 +8,7 @@ hub = PrimeHub()
 
 
 
-from microremote import MicroRemote
+from uremote import uRemote
 
 ur = uRemote(Port.A)
 

@@ -340,7 +340,7 @@ to setNeoPixelColors25 c1 c2 c3 c4 c5 c6 c7 c8 c9 c10 c11 c12 c13 c14 c15 c16 c1
 }
 
 
-module microremote
+module uremote
 author Ste7an
 version 1 0 
 description 'Communication library with MicroBlocks using the hubs
@@ -517,14 +517,17 @@ to process {
   if (not ((size cmd_data) == 0)) {
     local 'cmd' (at 1 cmd_data)
     local 'data' (at 2 cmd_data)
-    local 'return' (callCustomReporter cmd data)
-    if (isType return 'boolean') {
-      return = ('[data:makeList]')
-    } (not (isType return 'list')) {
-      return = ('[data:makeList]' return)
+    if ('[vars:functionExists]' cmd) {
+      local 'return' (callCustomReporter cmd data)
+      if (not (isType return 'list')) {
+        return = ('[data:makeList]' return)
+      }
+      cmd = ('[data:join]' cmd '_ack')
+      '_send command' cmd return
+    } else {
+      cmd = ('[data:join]' cmd '_err')
+      '_send command' cmd ('handler not found')
     }
-    cmd = ('[data:join]' cmd '_ack')
-    '_send command' cmd return
   }
 }
 

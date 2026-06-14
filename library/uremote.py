@@ -4,15 +4,10 @@
 
 import __main__
 
-
-
-import struct
 import sys
 try:
     from micropython import const
-    # _COLS = const(0x10): underscore saves memory by not posting const outside lib
-except:
-    # Polyfill. Maybe add a Final type?
+except ImportError:
     def const(arg):
         return arg
 
@@ -40,7 +35,7 @@ platforms = {
 try:
     _platform = platforms[sys.platform]
     del(platforms)
-except:
+except KeyError:
     _,_,_platform,_=sys.implementation
     if "EV3" in _platform or "Prime" in _platform or "LEGO" in _platform:
         _platform=_PYBRICKS
@@ -52,7 +47,6 @@ if _platform ==_PYBRICKS:
     from pybricks.iodevices import UARTDevice
     from pybricks.parameters import Port
     from pybricks.tools import StopWatch
-    # dumy pins
     RX_PIN, TX_PIN = 0,0
 elif _platform == _ESP32:
     import time
@@ -64,11 +58,6 @@ elif _platform == _ESP32:
 PREAMBLE = b'<$MU'
 
 
-
-# ============================================================
-#  MicroRemote
-# ============================================================
-
 class uRemote:
     def __init__(
         self,
@@ -79,16 +68,19 @@ class uRemote:
         rx=RX_PIN,
         tx=TX_PIN,
     ):
+        """Create a uRemote UART client or server.
+
+        wait_recv: overall frame receive timeout in ms
+        uart_timeout: per-read UART timeout in ms
+        byte_timeout: inter-byte gap timeout in ms (fixed at 10)
+        """
         self.byte_timeout = 10
         self.wait_recv = wait_recv
 
         if _platform==_PYBRICKS:
-            # Pybricks backend
             self.uart = UARTDevice(port_or_uart, timeout=uart_timeout)
             self.uart.set_baudrate(baudrate)
         elif _platform==_ESP32:
-            # MicroPython ESP32 backend
-            
             self.uart = machine.UART(
                 port_or_uart,
                 baudrate=baudrate,
@@ -96,8 +88,6 @@ class uRemote:
                 tx=machine.Pin(tx),
                 timeout=uart_timeout,
             )
-
-    # ---------- Timing abstraction ----------
 
     def _now(self):
         if _platform==_PYBRICKS:
@@ -110,8 +100,6 @@ class uRemote:
             return start.time()
         elif _platform==_ESP32:
             return time.ticks_diff(time.ticks_ms(), start)
-
-    # ---------- UART abstraction ----------
 
     def _waiting(self):
         if _platform==_PYBRICKS:
@@ -131,13 +119,9 @@ class uRemote:
     def _write(self, b):
         self.uart.write(b)
 
-    # ---------- Utility ----------
-
     def flush(self):
         while self._waiting():
             self._read_all()
-
-    # ---------- Framing ----------
 
     def send_bytes(self, payload):
         b = PREAMBLE + payload
@@ -147,7 +131,6 @@ class uRemote:
     def receive_bytes(self):
         start = self._now()
 
-        # wait for length byte
         while self._elapsed(start) < self.wait_recv and self._waiting() == 0:
             if _platform == _ESP32:
                 time.sleep_ms(1)
@@ -189,21 +172,20 @@ class uRemote:
 
         return bytes(payload[4:])
 
-    # ---------- Encode / decode ----------
-
     def encode(self, cmd, *argv):
         encoded=bytes([len(cmd)])+bytes(cmd,'utf-8')
         for arg in argv:
-            if type(arg)==int:
+            if type(arg)==bool:
+                encoded+=bytes([66,1, 1 if arg else 0])
+            elif type(arg)==int:
                 s=str(arg)
                 encoded+=bytes([78,len(s)])+bytes(s,'utf-8')
-            if type(arg)==bytes:
+            elif type(arg)==bytes:
                 encoded+=bytes([65,len(arg)])+arg
-            if type(arg)==str:
+            elif type(arg)==str:
                 encoded+=bytes([83,len(arg)])+bytes(arg,'utf-8')
-            if type(arg)==bool:
-                b= 1 if arg==True else 0
-                encoded+=bytes([66,1,b])
+            else:
+                raise TypeError("unsupported type")
         return encoded
 
     def decode(self, encoded):
@@ -235,8 +217,6 @@ class uRemote:
             decoded = decoded[0]
         return cmd, decoded
 
-    # ---------- High-level API ----------
-
     def send_command(self, cmd, *data):
         self.send_bytes(self.encode(cmd, *data))
 
@@ -245,7 +225,7 @@ class uRemote:
         if b:
             try:
                 return self.decode(b)
-            except Exception:
+            except (ValueError, IndexError, UnicodeError):
                 self.flush()
                 return "!ERROR", "decode error"
         return "!ERROR", "no bytes received"
@@ -257,33 +237,18 @@ class uRemote:
 
     def process(self):
         cmd, data = self.receive_command()
-        if not isinstance(data,list):
-            data=[data]
-        #print("recv ",cmd,data)
-        if cmd != "!ERROR":
-            if hasattr(__main__, cmd):
-                func = getattr(__main__, cmd)
-                resp = func(*data)
-                if resp is None:
-                    resp = ()
-                if not isinstance(resp,tuple):
-                    resp = {resp}
-                self.send_command(cmd + "_ack", *resp)
-        else:
+        if cmd == "!ERROR":
             self.send_command(cmd + "_err", "recv error")
-
-
-p = None
-
-def init(port):
-    global p
-    p = uRemote(eval("Port." + port))
-    return p
-
-
-def call(command_name: str, *args):
-    return p.call(command_name, *args)
-
-
-def process():
-    p.process()
+            return
+        if not isinstance(data, list):
+            data = [data]
+        if hasattr(__main__, cmd):
+            func = getattr(__main__, cmd)
+            resp = func(*data)
+            if resp is None:
+                resp = ()
+            elif not isinstance(resp, tuple):
+                resp = (resp,)
+            self.send_command(cmd + "_ack", *resp)
+        else:
+            self.send_command(cmd + "_err", "handler not found: " + cmd)
