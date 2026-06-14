@@ -11,6 +11,9 @@ except ImportError:
     def const(arg):
         return arg
 
+STATUS_OK = const(0)
+STATUS_ERR = const(1)
+
 _EV3=const(0x01)
 _ESP32=const(0x02)
 _ESP32_S2=const(0x03)
@@ -22,7 +25,7 @@ _K210=const(0x08)
 _PYBRICKS=const(0x09)
 
 platforms = {
-    'linux':_EV3, # EV3. TODO This might not be precise enough for python3 running on Linux laptops
+    'linux':_EV3,
     'esp32':_ESP32,
     'Espressif ESP32-S2':_ESP32_S2,
     'esp8266':_ESP8266,
@@ -41,8 +44,6 @@ except KeyError:
         _platform=_PYBRICKS
     del(platforms)
 
-# ---------- Platform detection ----------
-
 if _platform ==_PYBRICKS:
     from pybricks.iodevices import UARTDevice
     from pybricks.parameters import Port
@@ -52,8 +53,6 @@ elif _platform == _ESP32:
     import time
     import machine
     from lms_esp32 import RX_PIN, TX_PIN
-
-# ---------- Constants ----------
 
 PREAMBLE = b'<$MU'
 
@@ -184,8 +183,8 @@ class uRemote:
 
         return bytes(payload[4:])
 
-    def encode(self, cmd, *argv):
-        encoded=bytes([len(cmd)])+bytes(cmd,'utf-8')
+    def encode(self, status, cmd, *argv):
+        encoded = bytes([status, len(cmd)]) + bytes(cmd, 'utf-8')
         for arg in argv:
             if type(arg)==bool:
                 encoded+=bytes([66,1, 1 if arg else 0])
@@ -201,11 +200,12 @@ class uRemote:
         return encoded
 
     def decode(self, encoded):
-        cmd_len = encoded[0]
-        cmd = str(encoded[1:1 + cmd_len],"utf-8")
+        status = encoded[0]
+        cmd_len = encoded[1]
+        cmd = str(encoded[2:2 + cmd_len], 'utf-8')
 
         decoded = []
-        p = 1 + cmd_len
+        p = 2 + cmd_len
 
         while p < len(encoded):
             t = encoded[p]
@@ -227,37 +227,37 @@ class uRemote:
                 raise ValueError("Unknown type code")
         if len(decoded)==1:
             decoded = decoded[0]
-        return cmd, decoded
+        return status, cmd, decoded
 
-    def send_command(self, cmd, *data):
-        self.send_bytes(self.encode(cmd, *data))
+    def send_command(self, cmd, *data, status=STATUS_OK):
+        self.send_bytes(self.encode(status, cmd, *data))
 
     def receive_command(self):
-        """Receive and decode one frame. Advanced/debug use."""
+        """Receive and decode one frame. Returns (status, cmd, data)."""
         b = self.receive_bytes()
         if b:
             try:
                 return self.decode(b)
             except (ValueError, IndexError, UnicodeError):
                 self.flush()
-                return "!ERROR", "decode error"
-        return "!ERROR", "no bytes received"
+                return STATUS_ERR, "!ERROR", "decode error"
+        return STATUS_ERR, "!ERROR", "no bytes received"
 
     def exchange(self, cmd, *data):
-        """Send a command and return the raw (reply_cmd, payload) tuple."""
+        """Send a command and return the raw (status, reply_cmd, payload) tuple."""
         self.send_command(cmd, *data)
         return self.receive_command()
 
     def call(self, cmd, *data):
         self.send_command(cmd, *data)
-        reply_cmd, payload = self.receive_command()
+        status, reply_cmd, payload = self.receive_command()
 
         if reply_cmd == "!ERROR":
             raise uRemoteError(payload)
-        if reply_cmd == cmd + "_err":
-            raise uRemoteError(payload if isinstance(payload, str) else str(payload))
-        if reply_cmd != cmd + "_ack":
+        if reply_cmd != cmd:
             raise uRemoteError("unexpected reply: " + reply_cmd)
+        if status != STATUS_OK:
+            raise uRemoteError(payload if isinstance(payload, str) else str(payload))
 
         values = _as_values(payload)
         if len(values) == 0:
@@ -267,9 +267,10 @@ class uRemote:
         return tuple(values)
 
     def process(self):
-        cmd, data = self.receive_command()
+        status, cmd, data = self.receive_command()
         if cmd == "!ERROR":
-            self.send_command(cmd + "_err", "recv error")
+            return
+        if status != STATUS_OK:
             return
         if not isinstance(data, list):
             data = [data]
@@ -280,6 +281,6 @@ class uRemote:
                 resp = ()
             elif not isinstance(resp, tuple):
                 resp = (resp,)
-            self.send_command(cmd + "_ack", *resp)
+            self.send_command(cmd, *resp, status=STATUS_OK)
         else:
-            self.send_command(cmd + "_err", "handler not found: " + cmd)
+            self.send_command(cmd, "handler not found: " + cmd, status=STATUS_ERR)

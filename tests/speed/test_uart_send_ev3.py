@@ -16,8 +16,8 @@ s=StopWatch()
 for j in range(100):
     #uu.send_command('test',i,i+2)
     #cmd,data = ur.receive_command()
-    cmd, data = ur.exchange('test', i, i+2)
-    print(cmd,data)
+    status, cmd, data = ur.exchange('test', i, i+2)
+    print(status, cmd, data)
     #wait(1)
     i+=1
     if i> 255:

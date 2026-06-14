@@ -74,7 +74,7 @@ from pybricks.tools import wait, StopWatch
 
 hub = EV3Brick()
 
-from uremote import uRemote
+from uremote import uRemote, uRemoteError
 
 ur=uRemote(Port.S1)
 s=StopWatch()
@@ -84,13 +84,15 @@ while 1:
 
     
        
-    ack, data = ur.call(''sen'')
-    if ack==''!ERROR'':
+    try:
+        data = ur.call(''sen'')
+    except uRemoteError:
         err+=1
-    cnt+=1
+    else:
+        cnt+=1
     if cnt%100==0:
-        print(err,cnt,ack,data)
-        if ack!=''!ERROR'':
+        print(err,cnt,data)
+        if err==0:
             hex_str = '' ''.join(''{:02X}''.format(b) for b in data)
             print(cnt,hex_str)
         
@@ -295,7 +297,8 @@ variables time
 to '_decode' encoded {
   local 'tot_len' (size encoded)
   local 'var_list' ('[data:makeList]')
-  local 'p' 1
+  local 'status' (at 1 encoded)
+  local 'p' 2
   local 'l' (at p encoded)
   local 'cmd' ('[data:newByteArray]' l)
   for i l {
@@ -327,10 +330,10 @@ to '_decode' encoded {
     p += (l + 1)
     var_list = ('[data:join]' var_list ('[data:makeList]' bytes))
   }
-  return ('[data:makeList]' cmd var_list)
+  return ('[data:makeList]' status cmd var_list)
 }
 
-to '_encode' cmd list {
+to '_encode' status cmd list {
   if (not (isType list 'list')) {list = ('[data:makeList]' list)}
   local 'list_len' (size list)
   local 'bytes' ('[data:newByteArray]' 0)
@@ -360,7 +363,7 @@ to '_encode' cmd list {
     }
     all_bytes = ('[data:join]' all_bytes bytes)
   }
-  all_bytes = ('[data:join]' ('[data:asByteArray]' (size cmd)) ('[data:asByteArray]' cmd) all_bytes)
+  all_bytes = ('[data:join]' ('[data:asByteArray]' ('[data:makeList]' status (size cmd))) ('[data:asByteArray]' cmd) all_bytes)
   return all_bytes
 }
 
@@ -373,14 +376,14 @@ to '_receive command' {
 }
 
 to '_send' cmd data {
-  local 'bytes' ('_encode' cmd data)
+  local 'bytes' ('_encode' 0 cmd data)
   bytes = ('[data:join]' ('[data:asByteArray]' (size bytes)) bytes)
   '[serial:write]' bytes
 }
 
-to '_send command' cmd data {
+to '_send command' status cmd data {
   local 'PREAMBLE' '<$MU'
-  local 'bytes' ('[data:join]' ('[data:asByteArray]' PREAMBLE) ('_encode' cmd data))
+  local 'bytes' ('[data:join]' ('[data:asByteArray]' PREAMBLE) ('_encode' status cmd data))
   bytes = ('[data:join]' ('[data:asByteArray]' (size bytes)) bytes)
   '[serial:write]' bytes
 }
@@ -431,9 +434,17 @@ to '_wait and read serial' {
 }
 
 to call cmd data {
-  '_send command' cmd data
+  '_send command' 0 cmd data
   local 'rcv' ('_receive command')
-  local 'rcv_data' (at 2 rcv)
+  if ((size rcv) == 0) {
+    return
+  }
+  local 'status' (at 1 rcv)
+  local 'reply_cmd' (at 2 rcv)
+  local 'rcv_data' (at 3 rcv)
+  if (or (status > 0) (not (reply_cmd == cmd))) {
+    return
+  }
   if ((size rcv_data) == 1) {
     return (at 1 rcv_data)
   } else {
@@ -457,18 +468,17 @@ to init {
 to process {
   local 'cmd_data' ('_receive command')
   if (not ((size cmd_data) == 0)) {
-    local 'cmd' (at 1 cmd_data)
-    local 'data' (at 2 cmd_data)
+    local 'status' (at 1 cmd_data)
+    local 'cmd' (at 2 cmd_data)
+    local 'data' (at 3 cmd_data)
     if ('[vars:functionExists]' cmd) {
       local 'return' (callCustomReporter cmd data)
       if (not (isType return 'list')) {
         return = ('[data:makeList]' return)
       }
-      cmd = ('[data:join]' cmd '_ack')
-      '_send command' cmd return
+      '_send command' 0 cmd return
     } else {
-      cmd = ('[data:join]' cmd '_err')
-      '_send command' cmd ('handler not found')
+      '_send command' 1 cmd ('handler not found')
     }
   }
 }
