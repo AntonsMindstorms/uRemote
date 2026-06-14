@@ -9,7 +9,7 @@ hub = EV3Brick()
 from uremote import uRemote
 
 ur = uRemote(Port.S2, wait_recv=10000)
-print(ur.decode(b'\x00\x03cmdS\x03catN\x03123'))
+print(ur._decode(b'\x00\x03cmdS\x03catN\x03123'))
 
 def test(a,b):
     print("test",a,b)

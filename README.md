@@ -141,13 +141,12 @@ Handler return values are sent with status `0`:
 
 If no matching function exists, the server replies with status `1` and an error string.
 
-### Advanced: `exchange()` and `receive_command()`
+### Advanced: `exchange()`
 
-For debugging, use the low-level methods that return the raw `(status, cmd, payload)` tuple without validation:
+For debugging, use `exchange()` to send a command and get the raw `(status, cmd, payload)` tuple without validation:
 
 ```python
-status, cmd, data = ur.exchange('test', 1, 2)   # send + receive
-status, cmd, data = ur.receive_command()        # receive only
+status, cmd, data = ur.exchange('test', 1, 2)
 ```
 
 ### Constructor options

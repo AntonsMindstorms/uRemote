@@ -91,7 +91,7 @@ while 1:
 
     
     if ur.uart.waiting() > 40:   
-        status, cmd, data = ur.receive_command()
+        status, cmd, data = ur._recv_command()
         if cmd==''!ERROR'' or status > 0:
             err+=1
         else:

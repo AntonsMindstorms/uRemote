@@ -5,8 +5,8 @@ ur = uRemote()
 s=ticks_ms()
 i=0
 for j in range(100):
-    #ur.send_command('test',i,i+2)
-    #cmd,data = ur.receive_command()
+    #ur._send_command('test',i,i+2)
+    #status,cmd,data = ur._recv_command()
     status, cmd, data = ur.exchange('test', i, i+2)
     #print(cmd,data)
     #sleep_ms(20)
