@@ -116,7 +116,7 @@ except uRemoteError as e:
     print(e)   # e.g. "no bytes received", "handler not found: imu"
 ```
 
-`call()` checks the reply command internally — you do not need to inspect `_ack` or `_err` names yourself.
+`call()` checks that the reply command matches the request and that the status byte is `0`. You never handle status bytes or command suffixes yourself.
 
 ### Server: `process()`
 
@@ -133,21 +133,21 @@ while True:
     ur.process()
 ```
 
-Handler return values are sent as the ack payload:
+Handler return values are sent with status `0`:
 
-- `return` / `None` → empty ack
-- `return 42` → one number
-- `return x, y, z` → three numbers
+- `return` / `None` → status `0`, no data fields
+- `return 42` → status `0`, one number
+- `return x, y, z` → status `0`, three numbers
 
-If no matching function exists, the server sends `{cmd}_err` with `"handler not found: …"`.
+If no matching function exists, the server replies with status `1` and an error string.
 
 ### Advanced: `exchange()` and `receive_command()`
 
-For debugging or custom protocols, use the low-level methods that return the raw `(reply_cmd, payload)` tuple without validation:
+For debugging, use the low-level methods that return the raw `(status, cmd, payload)` tuple without validation:
 
 ```python
-cmd, data = ur.exchange('test', 1, 2)   # send + receive
-cmd, data = ur.receive_command()        # receive only
+status, cmd, data = ur.exchange('test', 1, 2)   # send + receive
+status, cmd, data = ur.receive_command()        # receive only
 ```
 
 ### Constructor options
@@ -183,13 +183,13 @@ MicroBlocks `call` returns **data only** (no command name). On failure it return
 
 When the hub calls `ur.call('joy')`:
 
-1. Hub sends command `"joy"` with optional arguments.
+1. Hub sends status `0`, command `"joy"`, and optional arguments.
 2. Server runs `process()`, which calls function `joy(...)` in the main script.
-3. On success, server replies with command `"joy_ack"` and return values.
-4. On failure, server replies with `"joy_err"` and an error string.
-5. Python `call()` validates the reply and returns the payload or raises `uRemoteError`.
+3. On success, server replies with status `0`, command `"joy"`, and return values.
+4. On failure, server replies with status `1`, command `"joy"`, and an error string.
+5. Python `call()` checks the command name and status byte, then returns the payload or raises `uRemoteError`.
 
-You only name the base command (e.g. `"joy"`). The `_ack` / `_err` suffixes are added automatically.
+Transport failures (timeout, bad preamble, decode error) never produce a valid frame. Those are reported locally as `uRemoteError` — the synthetic cmd name `"!ERROR"` is never sent on the wire.
 
 ---
 
@@ -211,12 +211,27 @@ Unknown Python types passed to `encode()` raise `TypeError`.
 Each UART frame:
 
 ```
-<tot_len> <PREAMBLE> <len_cmd> <cmd> [<type> <data_len> <data> ...]
+<tot_len> <PREAMBLE> <status> <cmd_len> <cmd> [<type> <data_len> <data> ...]
 ```
 
 - **tot_len** — total bytes in the frame (including preamble), max **255** (single-byte length prefix)
 - **PREAMBLE** — fixed sync bytes: `<$MU`
-- **cmd** — command name as UTF-8 text
+- **status** — `0` = OK (request or success reply), `1` = error reply
+- **cmd_len** — length of the command name in bytes
+- **cmd** — command name as UTF-8 text (same name on request and reply)
+
+Example request `joy(100, 200)` and success reply `joy → (42)`:
+
+```
+0 joy_len "joy"  N 3 "100"  N 3 "200"     ← request (status 0)
+0 joy_len "joy"  N 2 "42"                  ← reply   (status 0)
+```
+
+Example error reply:
+
+```
+1 joy_len "joy"  S 19 "handler not found"  ← reply (status 1)
+```
 
 ### Robust receive handling
 
