@@ -18,15 +18,16 @@ variables time _last_error
 to '_decode' encoded {
   local 'tot_len' (size encoded)
   local 'var_list' ('[data:makeList]')
-  local 'status' (at 1 encoded)
+  local 'hdr' (at 1 encoded)
+  local 'l' (mod hdr 32)
+  local 'status' (/ (- hdr l) 32)
   local 'p' 2
-  local 'l' (at p encoded)
   local 'cmd' ('[data:newByteArray]' l)
   for i l {
     atPut i cmd (at ((i + p) - 0) encoded)
   }
   cmd = ('[data:convertType]' cmd 'string')
-  p += (l + 1)
+  p += l
   repeatUntil (p > tot_len) {
     local 'type' (at p encoded)
     p += 1
@@ -86,7 +87,7 @@ to '_encode' status cmd list {
     }
     all_bytes = ('[data:join]' all_bytes bytes)
   }
-  all_bytes = ('[data:join]' ('[data:asByteArray]' ('[data:makeList]' status (size cmd))) ('[data:asByteArray]' cmd) all_bytes)
+  all_bytes = ('[data:join]' ('[data:asByteArray]' (+ (* status 32) (size cmd))) ('[data:asByteArray]' cmd) all_bytes)
   return all_bytes
 }
 

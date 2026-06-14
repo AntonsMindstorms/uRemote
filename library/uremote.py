@@ -11,75 +11,46 @@ except ImportError:
     def const(arg):
         return arg
 
-# Wire protocol
 STATUS_OK = const(0)
 STATUS_ERR = const(1)
 MAX_FRAME = const(255)
-MIN_FRAME = const(6)
+MIN_FRAME = const(5)
+MAX_CMD_LEN = const(31)
 PREAMBLE = b'<$MU'
 PREAMBLE_LEN = const(4)
 
-# Typed field tags (ASCII code)
 _T_BOOL = const(66)
 _T_NUM = const(78)
 _T_BYTES = const(65)
 _T_STR = const(83)
 
-# Platform backends
-ESP32 = const(1)
-PYBRICKS = const(2)
-
 if sys.platform == 'esp32':
-    _PLATFORM = ESP32
-else:
-    _PLATFORM = PYBRICKS
-
-_IS_PYBRICKS = _PLATFORM == PYBRICKS
-
-if _IS_PYBRICKS:
-    from pybricks.iodevices import UARTDevice
-    from pybricks.tools import StopWatch, wait
-    RX_PIN, TX_PIN = 0, 0
-else:
+    _IS_PYBRICKS = False
     import time
     import machine
     from lms_esp32 import RX_PIN, TX_PIN
+else:
+    _IS_PYBRICKS = True
+    from pybricks.iodevices import UARTDevice
+    from pybricks.tools import StopWatch, wait
+    RX_PIN, TX_PIN = 0, 0
 
 
 class uRemoteError(Exception):
-    """Raised when a remote call fails (transport, protocol, or handler error)."""
+    pass
 
 
 def _as_values(data):
-    if data is None:
-        return []
     if isinstance(data, list):
         return data
-    return [data]
+    return [] if data is None else [data]
 
 
 def _unwrap_result(payload):
-    """Turn decoded payload into None, a scalar, or a tuple."""
     values = _as_values(payload)
-    if len(values) == 0:
+    if not values:
         return None
-    if len(values) == 1:
-        return values[0]
-    return tuple(values)
-
-
-def _normalize_handler_args(data):
-    if isinstance(data, list):
-        return data
-    return [data]
-
-
-def _normalize_handler_result(resp):
-    if resp is None:
-        return ()
-    if isinstance(resp, tuple):
-        return resp
-    return (resp,)
+    return values[0] if len(values) == 1 else tuple(values)
 
 
 class uRemote:
@@ -94,197 +65,139 @@ class uRemote:
             tx: ESP32 TX pin (ignored on Pybricks), default from firmware.
         """
 
-    def __init__(
-        self,
-        port_or_uart=1,
-        baudrate=115200,
-        wait_recv=1000,
-        uart_timeout=1000,
-        rx=RX_PIN,
-        tx=TX_PIN,
-    ):
+    def __init__(self, port_or_uart=1, baudrate=115200, wait_recv=1000, uart_timeout=1000, rx=RX_PIN, tx=TX_PIN):
         self.byte_timeout = 10
         self.wait_recv = wait_recv
         self._last_rx_error = None
-
         if _IS_PYBRICKS:
             self._watch = StopWatch()
             self.uart = UARTDevice(port_or_uart, timeout=uart_timeout)
             self.uart.set_baudrate(baudrate)
         else:
-            self.uart = machine.UART(
-                port_or_uart,
-                baudrate=baudrate,
-                rx=machine.Pin(rx),
-                tx=machine.Pin(tx),
-                timeout=uart_timeout,
-            )
+            self.uart = machine.UART(port_or_uart, baudrate=baudrate, rx=machine.Pin(rx), tx=machine.Pin(tx), timeout=uart_timeout)
 
     def _ticks(self):
-        if _IS_PYBRICKS:
-            return self._watch.time()
-        return time.ticks_ms()
+        return self._watch.time() if _IS_PYBRICKS else time.ticks_ms()
 
     def _elapsed(self, start):
-        if _IS_PYBRICKS:
-            return self._watch.time() - start
-        return time.ticks_diff(time.ticks_ms(), start)
+        return (self._watch.time() - start) if _IS_PYBRICKS else time.ticks_diff(time.ticks_ms(), start)
 
     def _pause(self, ms):
-        if _IS_PYBRICKS:
-            wait(ms)
-        else:
-            time.sleep_ms(ms)
+        wait(ms) if _IS_PYBRICKS else time.sleep_ms(ms)
 
     def _waiting(self):
-        if _IS_PYBRICKS:
-            return self.uart.waiting()
-        return self.uart.any()
-
-    def _read(self, n=1):
-        return self.uart.read(n)
+        return self.uart.waiting() if _IS_PYBRICKS else self.uart.any()
 
     def _read_byte(self):
-        b = self._read(1)
-        if b:
-            return b[0]
-        return None
-
-    def _read_all(self):
-        if _IS_PYBRICKS:
-            self.uart.read_all()
-        else:
-            self.uart.read()
-
-    def _write(self, b):
-        self.uart.write(b)
+        b = self.uart.read(1)
+        return b[0] if b else None
 
     def _fail_rx(self, error):
         self.flush()
         self._last_rx_error = error
         return b''
 
-    def _error_reply(self, message):
-        return STATUS_ERR, "", message
-
     def flush(self):
         """Discard all bytes waiting in the UART receive buffer."""
         while self._waiting():
-            self._read_all()
+            self.uart.read_all() if _IS_PYBRICKS else self.uart.read()
 
     def _send_bytes(self, payload):
         frame = PREAMBLE + payload
         if len(frame) > MAX_FRAME:
             raise uRemoteError("frame too large")
-        self._write(bytes([len(frame)]) + frame)
+        self.uart.write(bytes([len(frame)]) + frame)
 
     def _recv_bytes(self):
         self._last_rx_error = None
         start = self._ticks()
-
-        while self._elapsed(start) < self.wait_recv and self._waiting() == 0:
+        while self._elapsed(start) < self.wait_recv and not self._waiting():
             self._pause(1)
-
-        if self._waiting() == 0:
+        if not self._waiting():
             return self._fail_rx("timeout: no length byte")
 
         length = self._read_byte()
-        if length is None:
-            return self._fail_rx("timeout: no length byte")
-        if length < MIN_FRAME or length > MAX_FRAME:
-            return self._fail_rx("invalid frame length")
+        if length is None or length < MIN_FRAME or length > MAX_FRAME:
+            return self._fail_rx("timeout: no length byte" if length is None else "invalid frame length")
 
         payload = bytearray()
-        total_start = self._ticks()
-        byte_start = total_start
-        preamble_index = 0
-
+        total_start = byte_start = self._ticks()
+        pre = 0
         while len(payload) < length:
             if self._elapsed(total_start) > self.wait_recv:
                 return self._fail_rx("timeout: incomplete frame")
-
             if self._waiting():
                 b = self._read_byte()
                 if b is None:
                     return self._fail_rx("timeout: incomplete frame")
-
                 payload.append(b)
-
-                if preamble_index < PREAMBLE_LEN:
-                    if b != PREAMBLE[preamble_index]:
+                if pre < PREAMBLE_LEN:
+                    if b != PREAMBLE[pre]:
                         return self._fail_rx("preamble mismatch")
-                    preamble_index += 1
-
+                    pre += 1
                 byte_start = self._ticks()
+            elif self._elapsed(byte_start) > self.byte_timeout:
+                return self._fail_rx("timeout: inter-byte gap")
             else:
-                if self._elapsed(byte_start) > self.byte_timeout:
-                    return self._fail_rx("timeout: inter-byte gap")
                 self._pause(1)
-
         return bytes(payload[PREAMBLE_LEN:])
 
     def _encode(self, status, cmd, *argv):
-        # Header: status byte, cmd length, cmd name
-        encoded = bytes([status, len(cmd)]) + bytes(cmd, 'utf-8')
+        n = len(cmd)
+        if n > MAX_CMD_LEN:
+            raise uRemoteError("command name too long")
+        # hdr: 3-bit status | 5-bit cmd length
+        out = bytes([(status << 5) | n]) + bytes(cmd, 'utf-8')
         for arg in argv:
-            encoded += self._encode_value(arg)
-        return encoded
-
-    def _encode_value(self, arg):
-        if type(arg) == bool:
-            return bytes([_T_BOOL, 1, 1 if arg else 0])
-        if type(arg) == int:
-            s = str(arg)
-            return bytes([_T_NUM, len(s)]) + bytes(s, 'utf-8')
-        if type(arg) == bytes:
-            return bytes([_T_BYTES, len(arg)]) + arg
-        if type(arg) == str:
-            return bytes([_T_STR, len(arg)]) + bytes(arg, 'utf-8')
-        raise TypeError("unsupported type")
+            if type(arg) == bool:
+                out += bytes([_T_BOOL, 1, 1 if arg else 0])
+            elif type(arg) == int:
+                s = str(arg)
+                out += bytes([_T_NUM, len(s)]) + bytes(s, 'utf-8')
+            elif type(arg) == bytes:
+                out += bytes([_T_BYTES, len(arg)]) + arg
+            elif type(arg) == str:
+                out += bytes([_T_STR, len(arg)]) + bytes(arg, 'utf-8')
+            else:
+                raise TypeError("unsupported type")
+        return out
 
     def _decode(self, encoded):
-        status = encoded[0]
-        cmd_len = encoded[1]
-        cmd = str(encoded[2:2 + cmd_len], 'utf-8')
-
-        decoded = []
-        p = 2 + cmd_len
-
+        hdr = encoded[0]
+        status, n = hdr >> 5, hdr & 0x1F
+        cmd = str(encoded[1:1 + n], 'utf-8')
+        decoded, p = [], 1 + n
         while p < len(encoded):
-            t = encoded[p]
-            length = encoded[p + 1]
+            t, ln = encoded[p], encoded[p + 1]
             p += 2
-            payload = encoded[p:p + length]
-            p += length
-            decoded.append(self._decode_value(t, payload))
-
+            chunk = encoded[p:p + ln]
+            p += ln
+            if t == _T_NUM:
+                decoded.append(int(chunk))
+            elif t == _T_BYTES:
+                decoded.append(chunk)
+            elif t == _T_STR:
+                decoded.append(str(chunk, 'utf-8'))
+            elif t == _T_BOOL:
+                decoded.append(bool(chunk[0]))
+            else:
+                raise ValueError("unknown type " + str(t))
         if len(decoded) == 1:
             decoded = decoded[0]
         return status, cmd, decoded
-
-    def _decode_value(self, tag, payload):
-        if tag == _T_NUM:
-            return int(str(payload, 'utf-8'))
-        if tag == _T_BYTES:
-            return payload
-        if tag == _T_STR:
-            return str(payload, 'utf-8')
-        if tag == _T_BOOL:
-            return bool(payload[0])
-        raise ValueError("unknown type " + str(tag))
 
     def _send_command(self, cmd, *data, status=STATUS_OK):
         self._send_bytes(self._encode(status, cmd, *data))
 
     def _recv_command(self):
         b = self._recv_bytes()
-        if b:
-            try:
-                return self._decode(b)
-            except (ValueError, IndexError, UnicodeError) as e:
-                self.flush()
-                return self._error_reply("decode error: " + str(e))
-        return self._error_reply(self._last_rx_error or "no bytes received")
+        if not b:
+            return STATUS_ERR, "", self._last_rx_error or "no bytes received"
+        try:
+            return self._decode(b)
+        except (ValueError, IndexError, UnicodeError) as e:
+            self.flush()
+            return STATUS_ERR, "", "decode error: " + str(e)
 
     def exchange(self, cmd, *data):
         """Send a command and return the raw reply tuple.
@@ -321,7 +234,6 @@ class uRemote:
         # Reply must echo the requested command name
         if reply_cmd != cmd:
             raise uRemoteError("unexpected reply: " + reply_cmd)
-
         return _unwrap_result(payload)
 
     def process(self):
@@ -331,14 +243,16 @@ class uRemote:
         with the decoded arguments, and sends back the return value(s).
         """
         status, cmd, data = self._recv_command()
-
         if status != STATUS_OK or not cmd:
             return
-
-        data = _normalize_handler_args(data)
-
+        if not isinstance(data, list):
+            data = [data]
         if hasattr(__main__, cmd):
-            resp = _normalize_handler_result(getattr(__main__, cmd)(*data))
+            resp = getattr(__main__, cmd)(*data)
+            if resp is None:
+                resp = ()
+            elif not isinstance(resp, tuple):
+                resp = (resp,)
             self._send_command(cmd, *resp, status=STATUS_OK)
         else:
             self._send_command(cmd, "handler not found: " + cmd, status=STATUS_ERR)

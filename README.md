@@ -215,26 +215,27 @@ Unknown Python types passed to `encode()` raise `TypeError`.
 Each UART frame:
 
 ```
-<tot_len> <PREAMBLE> <status> <cmd_len> <cmd> [<type> <data_len> <data> ...]
+<tot_len> <PREAMBLE> <hdr> <cmd> [<type> <data_len> <data> ...]
 ```
 
-- **tot_len** — total bytes in the frame (including preamble), max **255** (single-byte length prefix)
+- **tot_len** — total bytes in the frame (including preamble), max **255**
 - **PREAMBLE** — fixed sync bytes: `<$MU`
-- **status** — `0` = OK (request or success reply), `1` = error reply
-- **cmd_len** — length of the command name in bytes
+- **hdr** — one byte: upper 3 bits = status, lower 5 bits = cmd length (max **31**)
 - **cmd** — command name as UTF-8 text (same name on request and reply)
+
+Status values: `0` = OK, `1` = error reply.
 
 Example request `joy(100, 200)` and success reply `joy → (42)`:
 
 ```
-0 joy_len "joy"  N 3 "100"  N 3 "200"     ← request (status 0)
-0 joy_len "joy"  N 2 "42"                  ← reply   (status 0)
+hdr=joy_len "joy"  N 3 "100"  N 3 "200"     ← request (status 0)
+hdr=joy_len "joy"  N 2 "42"                  ← reply   (status 0)
 ```
 
 Example error reply:
 
 ```
-1 joy_len "joy"  S 19 "handler not found"  ← reply (status 1)
+hdr=joy_len "joy"  S 19 "handler not found"  ← reply (status 1)
 ```
 
 ### Robust receive handling
