@@ -13,43 +13,19 @@ except ImportError:
 
 STATUS_OK = const(0)
 STATUS_ERR = const(1)
+MAX_FRAME = const(255)
 
-_EV3=const(0x01)
-_ESP32=const(0x02)
-_ESP32_S2=const(0x03)
-_ESP8266=const(0x04)
-_SPIKE=const(0x05)
-_MAC=const(0x06)
-_H7=const(0x07)
-_K210=const(0x08)
-_PYBRICKS=const(0x09)
+if sys.platform == 'esp32':
+    _platform = const(1)
+else:
+    _platform = const(2)
 
-platforms = {
-    'linux':_EV3,
-    'esp32':_ESP32,
-    'Espressif ESP32-S2':_ESP32_S2,
-    'esp8266':_ESP8266,
-    'OpenMV4P-H7':_H7,
-    'OpenMV3-M7':_H7,
-    'LEGO Learning System Hub':_SPIKE,
-    'darwin':_MAC,
-    'MaixPy':_K210,
-}
-try:
-    _platform = platforms[sys.platform]
-    del(platforms)
-except KeyError:
-    _,_,_platform,_=sys.implementation
-    if "EV3" in _platform or "Prime" in _platform or "LEGO" in _platform:
-        _platform=_PYBRICKS
-    del(platforms)
-
-if _platform ==_PYBRICKS:
+if _platform == 2:
     from pybricks.iodevices import UARTDevice
     from pybricks.parameters import Port
     from pybricks.tools import StopWatch
-    RX_PIN, TX_PIN = 0,0
-elif _platform == _ESP32:
+    RX_PIN, TX_PIN = 0, 0
+else:
     import time
     import machine
     from lms_esp32 import RX_PIN, TX_PIN
@@ -87,11 +63,12 @@ class uRemote:
         """
         self.byte_timeout = 10
         self.wait_recv = wait_recv
+        self._last_rx_error = None
 
-        if _platform==_PYBRICKS:
+        if _platform == 2:
             self.uart = UARTDevice(port_or_uart, timeout=uart_timeout)
             self.uart.set_baudrate(baudrate)
-        elif _platform==_ESP32:
+        else:
             self.uart = machine.UART(
                 port_or_uart,
                 baudrate=baudrate,
@@ -101,30 +78,27 @@ class uRemote:
             )
 
     def _now(self):
-        if _platform==_PYBRICKS:
+        if _platform == 2:
             return StopWatch()
-        elif _platform==_ESP32:
-            return time.ticks_ms()
+        return time.ticks_ms()
 
     def _elapsed(self, start):
-        if _platform==_PYBRICKS:
+        if _platform == 2:
             return start.time()
-        elif _platform==_ESP32:
-            return time.ticks_diff(time.ticks_ms(), start)
+        return time.ticks_diff(time.ticks_ms(), start)
 
     def _waiting(self):
-        if _platform==_PYBRICKS:
+        if _platform == 2:
             return self.uart.waiting()
-        elif _platform==_ESP32:
-            return self.uart.any()
+        return self.uart.any()
 
     def _read(self, n=1):
         return self.uart.read(n)
 
     def _read_all(self):
-        if _platform==_PYBRICKS:
+        if _platform == 2:
             self.uart.read_all()
-        elif _platform==_ESP32:
+        else:
             self.uart.read()
 
     def _write(self, b):
@@ -135,19 +109,22 @@ class uRemote:
             self._read_all()
 
     def send_bytes(self, payload):
-        b = PREAMBLE + payload
-        b = bytes([len(b)]) + b
-        self._write(b)
+        frame = PREAMBLE + payload
+        if len(frame) > MAX_FRAME:
+            raise uRemoteError("frame too large")
+        self._write(bytes([len(frame)]) + frame)
 
     def receive_bytes(self):
+        self._last_rx_error = None
         start = self._now()
 
         while self._elapsed(start) < self.wait_recv and self._waiting() == 0:
-            if _platform == _ESP32:
+            if _platform == 1:
                 time.sleep_ms(1)
 
         if self._waiting() == 0:
             self.flush()
+            self._last_rx_error = "timeout: no length byte"
             return b''
 
         length = self._read(1)[0]
@@ -160,6 +137,7 @@ class uRemote:
         while len(payload) < length:
             if self._elapsed(total_start) > self.wait_recv:
                 self.flush()
+                self._last_rx_error = "timeout: incomplete frame"
                 return b''
 
             if self._waiting():
@@ -170,6 +148,7 @@ class uRemote:
                     if preamble_index < 4:
                         if b[0] != PREAMBLE[preamble_index]:
                             self.flush()
+                            self._last_rx_error = "preamble mismatch"
                             return b''
                         preamble_index += 1
 
@@ -177,8 +156,9 @@ class uRemote:
             else:
                 if self._elapsed(byte_start) > self.byte_timeout:
                     self.flush()
+                    self._last_rx_error = "timeout: inter-byte gap"
                     return b''
-                if _platform==_ESP32:
+                if _platform == 1:
                     time.sleep_ms(1)
 
         return bytes(payload[4:])
@@ -186,15 +166,15 @@ class uRemote:
     def encode(self, status, cmd, *argv):
         encoded = bytes([status, len(cmd)]) + bytes(cmd, 'utf-8')
         for arg in argv:
-            if type(arg)==bool:
-                encoded+=bytes([66,1, 1 if arg else 0])
-            elif type(arg)==int:
-                s=str(arg)
-                encoded+=bytes([78,len(s)])+bytes(s,'utf-8')
-            elif type(arg)==bytes:
-                encoded+=bytes([65,len(arg)])+arg
-            elif type(arg)==str:
-                encoded+=bytes([83,len(arg)])+bytes(arg,'utf-8')
+            if type(arg) == bool:
+                encoded += bytes([66, 1, 1 if arg else 0])
+            elif type(arg) == int:
+                s = str(arg)
+                encoded += bytes([78, len(s)]) + bytes(s, 'utf-8')
+            elif type(arg) == bytes:
+                encoded += bytes([65, len(arg)]) + arg
+            elif type(arg) == str:
+                encoded += bytes([83, len(arg)]) + bytes(arg, 'utf-8')
             else:
                 raise TypeError("unsupported type")
         return encoded
@@ -216,16 +196,16 @@ class uRemote:
             p += length
 
             if t == 78:
-                decoded.append(int(str(payload,'utf-8')))
+                decoded.append(int(str(payload, 'utf-8')))
             elif t == 65:
                 decoded.append(payload)
             elif t == 83:
-                decoded.append(str(payload,'utf-8'))
+                decoded.append(str(payload, 'utf-8'))
             elif t == 66:
                 decoded.append(bool(payload[0]))
             else:
-                raise ValueError("Unknown type code")
-        if len(decoded)==1:
+                raise ValueError("unknown type " + str(t))
+        if len(decoded) == 1:
             decoded = decoded[0]
         return status, cmd, decoded
 
@@ -238,10 +218,10 @@ class uRemote:
         if b:
             try:
                 return self.decode(b)
-            except (ValueError, IndexError, UnicodeError):
+            except (ValueError, IndexError, UnicodeError) as e:
                 self.flush()
-                return STATUS_ERR, "!ERROR", "decode error"
-        return STATUS_ERR, "!ERROR", "no bytes received"
+                return STATUS_ERR, "", "decode error: " + str(e)
+        return STATUS_ERR, "", self._last_rx_error or "no bytes received"
 
     def exchange(self, cmd, *data):
         """Send a command and return the raw (status, reply_cmd, payload) tuple."""
@@ -252,8 +232,6 @@ class uRemote:
         self.send_command(cmd, *data)
         status, reply_cmd, payload = self.receive_command()
 
-        if reply_cmd == "!ERROR":
-            raise uRemoteError(payload)
         if reply_cmd != cmd:
             raise uRemoteError("unexpected reply: " + reply_cmd)
         if status != STATUS_OK:
@@ -268,8 +246,7 @@ class uRemote:
 
     def process(self):
         status, cmd, data = self.receive_command()
-        if cmd == "!ERROR":
-            return
+        
         if status != STATUS_OK:
             return
         if not isinstance(data, list):

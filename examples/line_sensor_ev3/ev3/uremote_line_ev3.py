@@ -1,3 +1,4 @@
+# EV3 client for LMS-ESP32 line sensor — requires esp32 uremote_line.py + line_sensor.py on the board.
 from pybricks.hubs import EV3Brick
 from pybricks.parameters import Button, Color, Direction, Port, Side, Stop
 from pybricks.robotics import DriveBase

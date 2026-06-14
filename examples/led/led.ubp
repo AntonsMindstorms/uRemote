@@ -342,20 +342,20 @@ to setNeoPixelColors25 c1 c2 c3 c4 c5 c6 c7 c8 c9 c10 c11 c12 c13 c14 c15 c16 c1
 
 module uremote
 author Ste7an
-version 1 0 
-description 'Communication library with MicroBlocks using the hubs
-UARTDevice.'
-variables time 
+version 1 4 
+description 'UART RPC for MicroBlocks. Receive timeout 1000 ms and inter-byte timeout 10 ms are fixed.'
+variables time _last_error
 
-  spec 'r' '_encode' 'encode _ data _' 'auto auto' 10 '10'
-  spec 'r' '_read serial' 'read serial'
+  spec ' ' 'init' 'uremote init'
+  spec 'r' 'call' 'uremote call _ data _' 'str auto' 'Command' <Reporter v>
+  spec 'r' 'last error' 'uremote last error'
+  spec ' ' 'process' 'uremote process'
+  spec 'r' '_encode' 'encode _ _ data _' 'num str auto' '0 Command' <Reporter v>
+  spec 'r' '_wait and read serial' 'wait and read serial'
   spec 'r' '_decode' 'decode _' 'auto' '10'
-  spec 'r' 'call' 'call _ data _' 'auto auto' '10' '10'
+  spec ' ' '_send command' 'send command _ _ data _' 'num str auto' '0 Command' <Reporter v>
   spec 'r' '_receive command' 'receive command'
-  spec ' ' '_send command' 'send command _ data _' 'auto auto' '10' '10'
-  spec ' ' 'process' 'process'
   spec ' ' 'flush' 'flush'
-  spec ' ' 'init' 'init'
 
 to '_decode' encoded {
   local 'tot_len' (size encoded)
@@ -389,6 +389,8 @@ to '_decode' encoded {
       comment '66 = B -> boolean'
       bytes = ('[data:convertType]' (at 1 bytes) 'boolean')
     } else {
+      _last_error = ('[data:join]' 'decode: unknown type ' type)
+      return ('[data:makeList]')
     }
     p += (l + 1)
     var_list = ('[data:join]' var_list ('[data:makeList]' bytes))
@@ -397,6 +399,7 @@ to '_decode' encoded {
 }
 
 to '_encode' status cmd list {
+  if (not (isType list 'list')) {list = ('[data:makeList]' list)}
   local 'list_len' (size list)
   local 'bytes' ('[data:newByteArray]' 0)
   local 'all_bytes' ('[data:newByteArray]' 0)
@@ -429,7 +432,26 @@ to '_encode' status cmd list {
   return all_bytes
 }
 
-to '_read serial' {
+to '_receive command' {
+  local 'bytes' ('_wait and read serial')
+  if ((size bytes) > 0) {
+    return ('_decode' bytes)
+  }
+  return ('[data:makeList]')
+}
+
+to '_send command' status cmd data {
+  local 'PREAMBLE' '<$MU'
+  local 'bytes' ('[data:join]' ('[data:asByteArray]' PREAMBLE) ('_encode' status cmd data))
+  if ((size bytes) > 255) {
+    _last_error = 'frame too large'
+    return
+  }
+  bytes = ('[data:join]' ('[data:asByteArray]' (size bytes)) bytes)
+  '[serial:write]' bytes
+}
+
+to '_wait and read serial' {
   local 'byte' 0
   local 'PREAMBLE' ('[data:asByteArray]' '<$MU')
   local 'start_time' (millisOp)
@@ -439,6 +461,7 @@ to '_read serial' {
     tot_len = (at 1 ('[serial:readNr]' 1))
   } else {
     local 'tmp' ('[serial:read]')
+    _last_error = 'timeout: no length byte'
     return ('[data:newByteArray]' 0)
   }
   local 'buf' ('[data:newByteArray]' (tot_len - 4))
@@ -448,6 +471,7 @@ to '_read serial' {
   repeatUntil (idx > tot_len) {
     if (((millisOp) - frameStart) > 1000) {
       local 'tmp' ('[serial:read]')
+      _last_error = 'timeout: incomplete frame'
       return ('[data:newByteArray]' 0)
     }
     if (('[serial:available]') > 0) {
@@ -455,8 +479,8 @@ to '_read serial' {
       if (idx < 5) {
         comment 'check preamble'
         if (byte != (at idx PREAMBLE)) {
-          sayIt idx (at idx buf) (at idx PREAMBLE)
           local 'tmp' ('[serial:read]')
+          _last_error = 'preamble mismatch'
           return ('[data:newByteArray]' 0)
         }
       } else {
@@ -467,6 +491,7 @@ to '_read serial' {
     } else {
       if (((millisOp) - byteStart) > 10) {
         local 'tmp' ('[serial:read]')
+        _last_error = 'timeout: inter-byte gap'
         return ('[data:newByteArray]' 0)
       }
     }
@@ -474,39 +499,32 @@ to '_read serial' {
   return buf
 }
 
-to '_receive command' {
-  local 'bytes' ('_read serial')
-  if ((size bytes) > 0) {
-    return ('_decode' bytes)
-  }
-  return ('[data:makeList]')
-}
-
-to '_send' cmd data {
-  local 'bytes' ('_encode' 0 cmd data)
-  bytes = ('[data:join]' ('[data:asByteArray]' (size bytes)) bytes)
-  '[serial:write]' bytes
-}
-
-to '_send command' status cmd data {
-  local 'PREAMBLE' '<$MU'
-  local 'bytes' ('[data:join]' ('[data:asByteArray]' PREAMBLE) ('_encode' status cmd data))
-  bytes = ('[data:join]' ('[data:asByteArray]' (size bytes)) bytes)
-  '[serial:write]' bytes
-}
-
 to call cmd data {
+  _last_error = ''
   '_send command' 0 cmd data
   local 'rcv' ('_receive command')
   if ((size rcv) == 0) {
+    if (_last_error == '') {
+      _last_error = 'no bytes received'
+    }
     return
   }
   local 'status' (at 1 rcv)
   local 'reply_cmd' (at 2 rcv)
   local 'rcv_data' (at 3 rcv)
-  if (or (status > 0) (not (reply_cmd == cmd))) {
+  if (not (reply_cmd == cmd)) {
+    _last_error = ('[data:join]' 'unexpected reply: ' reply_cmd)
     return
   }
+  if (status > 0) {
+    if ((size rcv_data) == 1) {
+      _last_error = (at 1 rcv_data)
+    } else {
+      _last_error = 'remote error'
+    }
+    return
+  }
+  _last_error = ''
   if ((size rcv_data) == 1) {
     return (at 1 rcv_data)
   } else {
@@ -514,15 +532,20 @@ to call cmd data {
   }
 }
 
+to 'last error' {
+  return _last_error
+}
+
 to flush {
   local 'var' 0
-  repeatUntil (('[serial:available]') > 0) {
-    time = ('[serial:read]')
+  repeatUntil (('[serial:available]') == 0) {
+    var = ('[serial:read]')
   }
 }
 
 to init {
   comment 'init serial port at 115200 and empty buffer'
+  _last_error = ''
   '[serial:open]' 115200
   local 'var' ('[serial:read]')
 }
@@ -544,4 +567,3 @@ to process {
     }
   }
 }
-

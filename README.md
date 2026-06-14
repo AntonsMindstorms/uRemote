@@ -75,7 +75,7 @@ except uRemoteError as e:
     print('failed:', e)
 ```
 
-More examples are in [`examples/`](examples/) (joystick, IMU, LED, line sensor).
+More examples are in [`examples/`](examples/) (joystick, IMU, LED, line sensor). Minimal pairs are in [`examples/hello/`](examples/hello/).
 
 ---
 
@@ -173,9 +173,12 @@ Import the `uremote` library on the ESP32/MicroBlocks side.
 |-------|------|
 | `uremote init` | Open serial at 115200 baud |
 | `uremote call` | Client: send command, return data |
-| `uremote process` | Server: receive command, call handler, send ack |
+| `uremote last error` | Reporter: last error from `call` (empty on success) |
+| `uremote process` | Server: receive command, call handler, send reply |
 
-MicroBlocks `call` returns **data only** (no command name). On failure it returns empty/nothing — it does not raise exceptions like Python. Plan error checks accordingly when teaching both platforms.
+MicroBlocks `call` returns **data only** and does not raise exceptions. After a failed `call`, read **`uremote last error`** — e.g. `"timeout: no length byte"`, `"preamble mismatch"`, `"handler not found"`.
+
+**Fixed timeouts (MicroBlocks only):** receive wait **1000 ms**, inter-byte gap **10 ms**. These are not configurable in `.ubl`; Python uses `wait_recv` and `byte_timeout` on the constructor instead.
 
 ---
 
@@ -189,7 +192,9 @@ When the hub calls `ur.call('joy')`:
 4. On failure, server replies with status `1`, command `"joy"`, and an error string.
 5. Python `call()` checks the command name and status byte, then returns the payload or raises `uRemoteError`.
 
-Transport failures (timeout, bad preamble, decode error) never produce a valid frame. Those are reported locally as `uRemoteError` — the synthetic cmd name `"!ERROR"` is never sent on the wire.
+Transport failures (timeout, bad preamble, decode error) never produce a valid frame. Python reports them as distinct `uRemoteError` messages (`timeout: no length byte`, `preamble mismatch`, `timeout: incomplete frame`, `timeout: inter-byte gap`, `decode error: …`). The synthetic cmd name `"!ERROR"` is never sent on the wire.
+
+Payloads that exceed the 255-byte frame limit raise `uRemoteError("frame too large")` at send time.
 
 ---
 
@@ -251,6 +256,7 @@ If the preamble does not match, the UART buffer is flushed and the frame is disc
 |------|---------|
 | [`library/uremote.py`](library/uremote.py) | Pybricks + ESP32 MicroPython library |
 | [`library/uremote.ubl`](library/uremote.ubl) | MicroBlocks library |
+| [`examples/hello/`](examples/hello/) | Minimal hub + ESP32 ping pair |
 | [`examples/`](examples/) | Joystick, IMU, LED, line sensor demos |
 | [`pybricks_firmware/`](pybricks_firmware/) | Patched firmware with `UARTDevice` |
 | [`tests/speed/`](tests/speed/) | UART throughput tests |
