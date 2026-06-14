@@ -18,11 +18,11 @@ to imu x y z {
   '[tft:setPixel]' xval (120 + (z / (14000 / 120))) (colorSwatch 69 241 255 255)
 }
 
-script 596 40 {
+script 596 50 {
 to imu {}
 }
 
-script 105 65 {
+script 105 75 {
 whenStarted
 '[tft:clear]'
 init

@@ -14,7 +14,7 @@ to led dir {
   setNeoPixelColor (led_nr + 1) (colorSwatch 35 190 30 255)
 }
 
-script 214 62 {
+script 224 62 {
 whenStarted
 neoPixelAttach 9 21
 clearNeoPixels
@@ -25,22 +25,14 @@ forever {
 }
 }
 
-script 589 380 {
-led -1
-}
-
-script 40 381 {
+script 50 381 {
 to led {}
 }
-
-script 536 470 (v led_nr)
-
-script 670 486 (v led_nr)
 
 
 module NeoPixel Output
 author MicroBlocks
-version 1 14 
+version 1 15 
 description 'Control NeoPixel (WS2812) RGB LED strips and rings.
 '
 variables _np_pixels _np_pin _np_haswhite 
@@ -99,7 +91,7 @@ to '_NeoPixel_ensureInitialized' {
   } ((boardType) == 'D1-Mini') {
     comment 'D1 mini kit'
     neoPixelAttach 7 15 false
-  } ((boardType) == 'FOXBIT') {
+  } ((boardType) == 'Foxbit') {
     neoPixelAttach 35 '' false
   } ((boardType) == 'CodingBox') {
     neoPixelAttach 35 '' false
@@ -226,115 +218,16 @@ to setNeoPixelColor i color {
 
 to setNeoPixelColors10 c1 c2 c3 c4 c5 c6 c7 c8 c9 c10 {
   '_NeoPixel_ensureInitialized'
-  if ((size _np_pixels) >= 1) {
-    atPut 1 _np_pixels c1
-  }
-  if ((size _np_pixels) >= 2) {
-    atPut 2 _np_pixels c2
-  }
-  if ((size _np_pixels) >= 3) {
-    atPut 3 _np_pixels c3
-  }
-  if ((size _np_pixels) >= 4) {
-    atPut 4 _np_pixels c4
-  }
-  if ((size _np_pixels) >= 5) {
-    atPut 5 _np_pixels c5
-  }
-  if ((size _np_pixels) >= 6) {
-    atPut 6 _np_pixels c6
-  }
-  if ((size _np_pixels) >= 7) {
-    atPut 7 _np_pixels c7
-  }
-  if ((size _np_pixels) >= 8) {
-    atPut 8 _np_pixels c8
-  }
-  if ((size _np_pixels) >= 9) {
-    atPut 9 _np_pixels c9
-  }
-  if ((size _np_pixels) >= 10) {
-    atPut 10 _np_pixels c10
+  for i (minimum (size _np_pixels) (pushArgCount)) {
+    atPut i _np_pixels (getArg i)
   }
   '_NeoPixel_update'
 }
 
 to setNeoPixelColors25 c1 c2 c3 c4 c5 c6 c7 c8 c9 c10 c11 c12 c13 c14 c15 c16 c17 c18 c19 c20 c21 c22 c23 c24 c25 {
   '_NeoPixel_ensureInitialized'
-  if ((size _np_pixels) >= 1) {
-    atPut 1 _np_pixels c1
-  }
-  if ((size _np_pixels) >= 2) {
-    atPut 2 _np_pixels c2
-  }
-  if ((size _np_pixels) >= 3) {
-    atPut 3 _np_pixels c3
-  }
-  if ((size _np_pixels) >= 4) {
-    atPut 4 _np_pixels c4
-  }
-  if ((size _np_pixels) >= 5) {
-    atPut 5 _np_pixels c5
-  }
-  if ((size _np_pixels) >= 6) {
-    atPut 6 _np_pixels c6
-  }
-  if ((size _np_pixels) >= 7) {
-    atPut 7 _np_pixels c7
-  }
-  if ((size _np_pixels) >= 8) {
-    atPut 8 _np_pixels c8
-  }
-  if ((size _np_pixels) >= 9) {
-    atPut 9 _np_pixels c9
-  }
-  if ((size _np_pixels) >= 10) {
-    atPut 10 _np_pixels c10
-  }
-  if ((size _np_pixels) >= 11) {
-    atPut 11 _np_pixels c11
-  }
-  if ((size _np_pixels) >= 12) {
-    atPut 12 _np_pixels c12
-  }
-  if ((size _np_pixels) >= 13) {
-    atPut 13 _np_pixels c13
-  }
-  if ((size _np_pixels) >= 14) {
-    atPut 14 _np_pixels c14
-  }
-  if ((size _np_pixels) >= 15) {
-    atPut 15 _np_pixels c15
-  }
-  if ((size _np_pixels) >= 16) {
-    atPut 16 _np_pixels c16
-  }
-  if ((size _np_pixels) >= 17) {
-    atPut 17 _np_pixels c17
-  }
-  if ((size _np_pixels) >= 18) {
-    atPut 18 _np_pixels c18
-  }
-  if ((size _np_pixels) >= 19) {
-    atPut 19 _np_pixels c19
-  }
-  if ((size _np_pixels) >= 20) {
-    atPut 20 _np_pixels c20
-  }
-  if ((size _np_pixels) >= 21) {
-    atPut 21 _np_pixels c21
-  }
-  if ((size _np_pixels) >= 22) {
-    atPut 22 _np_pixels c22
-  }
-  if ((size _np_pixels) >= 23) {
-    atPut 23 _np_pixels c23
-  }
-  if ((size _np_pixels) >= 24) {
-    atPut 24 _np_pixels c24
-  }
-  if ((size _np_pixels) >= 25) {
-    atPut 25 _np_pixels c25
+  for i (minimum (size _np_pixels) (pushArgCount)) {
+    atPut i _np_pixels (getArg i)
   }
   '_NeoPixel_update'
 }
@@ -342,6 +235,20 @@ to setNeoPixelColors25 c1 c2 c3 c4 c5 c6 c7 c8 c9 c10 c11 c12 c13 c14 c15 c16 c1
 
 module uremote
 author Ste7an
+<<<<<<< HEAD
+version 1 2 
+description 'Communication library with MicroBlocks using the hubs UARTDevice.
+'
+variables time 
+
+  spec ' ' 'init' 'uremote init'
+  spec 'r' 'call' 'uremote call _ data _' 'str auto any' 'Command' <Reporter v>
+  spec ' ' 'process' 'uremote process'
+  spec 'r' '_encode' 'encode _ data _' 'str auto any' 'Command' <Reporter v>
+  spec 'r' '_wait and read serial' 'wait and read serial'
+  spec 'r' '_decode' 'decode _' 'auto' '10'
+  spec ' ' '_send command' 'send command _ data _' 'str auto any' 'Command' <Reporter v>
+=======
 version 1 4 
 description 'UART RPC for MicroBlocks. Receive timeout 1000 ms and inter-byte timeout 10 ms are fixed.'
 variables time _last_error
@@ -354,6 +261,7 @@ variables time _last_error
   spec 'r' '_wait and read serial' 'wait and read serial'
   spec 'r' '_decode' 'decode _' 'auto' '10'
   spec ' ' '_send command' 'send command _ _ data _' 'num str auto' '0 Command' <Reporter v>
+>>>>>>> 3d3e38fa4abc4cb27345cdaf72893b755f01ec00
   spec 'r' '_receive command' 'receive command'
   spec ' ' 'flush' 'flush'
 
@@ -399,7 +307,11 @@ to '_decode' encoded {
   return ('[data:makeList]' status cmd var_list)
 }
 
+<<<<<<< HEAD
+to '_encode' cmd list {
+=======
 to '_encode' status cmd list {
+>>>>>>> 3d3e38fa4abc4cb27345cdaf72893b755f01ec00
   if (not (isType list 'list')) {list = ('[data:makeList]' list)}
   local 'list_len' (size list)
   local 'bytes' ('[data:newByteArray]' 0)
@@ -441,6 +353,17 @@ to '_receive command' {
   return ('[data:makeList]')
 }
 
+<<<<<<< HEAD
+to '_send' cmd data {
+  local 'bytes' ('_encode' cmd data)
+  bytes = ('[data:join]' ('[data:asByteArray]' (size bytes)) bytes)
+  '[serial:write]' bytes
+}
+
+to '_send command' cmd data {
+  local 'PREAMBLE' '<$MU'
+  local 'bytes' ('[data:join]' ('[data:asByteArray]' PREAMBLE) ('_encode' cmd data))
+=======
 to '_send command' status cmd data {
   local 'PREAMBLE' '<$MU'
   local 'bytes' ('[data:join]' ('[data:asByteArray]' PREAMBLE) ('_encode' status cmd data))
@@ -448,6 +371,7 @@ to '_send command' status cmd data {
     _last_error = 'frame too large'
     return
   }
+>>>>>>> 3d3e38fa4abc4cb27345cdaf72893b755f01ec00
   bytes = ('[data:join]' ('[data:asByteArray]' (size bytes)) bytes)
   '[serial:write]' bytes
 }
@@ -501,6 +425,11 @@ to '_wait and read serial' {
 }
 
 to call cmd data {
+<<<<<<< HEAD
+  '_send command' cmd data
+  local 'rcv' ('_receive command')
+  local 'rcv_data' (at 2 rcv)
+=======
   _last_error = ''
   '_send command' 0 cmd data
   local 'rcv' ('_receive command')
@@ -526,15 +455,19 @@ to call cmd data {
     return
   }
   _last_error = ''
+>>>>>>> 3d3e38fa4abc4cb27345cdaf72893b755f01ec00
   if ((size rcv_data) == 1) {
     return (at 1 rcv_data)
   } else {
     return rcv_data
   }
+<<<<<<< HEAD
+=======
 }
 
 to 'last error' {
   return _last_error
+>>>>>>> 3d3e38fa4abc4cb27345cdaf72893b755f01ec00
 }
 
 to flush {
