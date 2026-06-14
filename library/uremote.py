@@ -24,17 +24,17 @@ _T_NUM = const(78)
 _T_BYTES = const(65)
 _T_STR = const(83)
 
-if sys.platform == 'esp32':
-    _IS_PYBRICKS = False
-    import time
-    import machine
-    from lms_esp32 import RX_PIN, TX_PIN
-else:
+if 'Pybricks' in sys.version:
     _IS_PYBRICKS = True
     from pybricks.iodevices import UARTDevice
     from pybricks.tools import StopWatch, wait
     RX_PIN, TX_PIN = 0, 0
-
+else:
+    _IS_PYBRICKS = False
+    import time
+    import machine
+    from lms_esp32 import RX_PIN, TX_PIN
+    
 
 class uRemoteError(Exception):
     pass
@@ -94,7 +94,7 @@ class uRemote:
 
     def _fail_rx(self, error):
         self.flush()
-        self._last_rx_error = error
+        self._last_rx_error = "Read error: " + error
         return b''
 
     def flush(self):
@@ -114,22 +114,22 @@ class uRemote:
         while self._elapsed(start) < self.wait_recv and not self._waiting():
             self._pause(1)
         if not self._waiting():
-            return self._fail_rx("timeout: no length byte")
+            return self._fail_rx("no length byte")
 
         length = self._read_byte()
         if length is None or length < MIN_FRAME or length > MAX_FRAME:
-            return self._fail_rx("timeout: no length byte" if length is None else "invalid frame length")
+            return self._fail_rx("no length byte" if length is None else "invalid frame length")
 
         payload = bytearray()
         total_start = byte_start = self._ticks()
         pre = 0
         while len(payload) < length:
             if self._elapsed(total_start) > self.wait_recv:
-                return self._fail_rx("timeout: incomplete frame")
+                return self._fail_rx("incomplete frame")
             if self._waiting():
                 b = self._read_byte()
                 if b is None:
-                    return self._fail_rx("timeout: incomplete frame")
+                    return self._fail_rx("incomplete frame")
                 payload.append(b)
                 if pre < PREAMBLE_LEN:
                     if b != PREAMBLE[pre]:
@@ -137,7 +137,7 @@ class uRemote:
                     pre += 1
                 byte_start = self._ticks()
             elif self._elapsed(byte_start) > self.byte_timeout:
-                return self._fail_rx("timeout: inter-byte gap")
+                return self._fail_rx("inter-byte timout")
             else:
                 self._pause(1)
         return bytes(payload[PREAMBLE_LEN:])

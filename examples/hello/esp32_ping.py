@@ -2,12 +2,10 @@
 # Pair with hub_ping_prime.py or hub_ping_ev3.py on a Pybricks hub.
 from uremote import uRemote
 
-
-def ping():
-    return 42
-
-
 ur = uRemote()
 
-while True:
+def hello(text):
+    return f'ESP32 heard: {text}'
+
+while 1:
     ur.process()
