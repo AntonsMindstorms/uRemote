@@ -23,8 +23,12 @@ _T_BOOL = const(66)
 _T_NUM = const(78)
 _T_BYTES = const(65)
 _T_STR = const(83)
-RX_PIN = 0
-TX_PIN = 0
+
+try:
+    from lms_esp32 import RX_PIN, TX_PIN
+except ImportError:
+    RX_PIN = 0
+    TX_PIN = 0
 
 if 'Pybricks' in sys.version:
     _IS_PYBRICKS = True
@@ -34,10 +38,7 @@ else:
     _IS_PYBRICKS = False
     import time
     import machine
-    if not 'OpenMV' in sys.version:
-        from lms_esp32 import RX_PIN, TX_PIN
     
-
 class uRemoteError(Exception):
     pass
 
