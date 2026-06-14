@@ -23,17 +23,19 @@ _T_BOOL = const(66)
 _T_NUM = const(78)
 _T_BYTES = const(65)
 _T_STR = const(83)
+RX_PIN = 0
+TX_PIN = 0
 
 if 'Pybricks' in sys.version:
     _IS_PYBRICKS = True
     from pybricks.iodevices import UARTDevice
     from pybricks.tools import StopWatch, wait
-    RX_PIN, TX_PIN = 0, 0
 else:
     _IS_PYBRICKS = False
     import time
     import machine
-    from lms_esp32 import RX_PIN, TX_PIN
+    if not 'OpenMV' in sys.version:
+        from lms_esp32 import RX_PIN, TX_PIN
     
 
 class uRemoteError(Exception):
@@ -57,7 +59,7 @@ class uRemote:
     """UART RPC client/server for Pybricks hubs and ESP32 boards.
     
         Args:
-            port_or_uart: Pybricks Port or ESP32 UART id.
+            port_or_uart: Pybricks Port or ESP32 UART id, default 1 - works for LMS-ESP32 and OpenMV AE3
             baudrate: Serial speed in bits per second, default 115200.
             wait_recv: Overall frame receive timeout in milliseconds, default 1000.
             uart_timeout: Per-read UART timeout in milliseconds, default 1000.
@@ -73,6 +75,8 @@ class uRemote:
             self._watch = StopWatch()
             self.uart = UARTDevice(port_or_uart, timeout=uart_timeout)
             self.uart.set_baudrate(baudrate)
+        elif 'OpenMV' in sys.version:
+            self.uart = machine.UART(port_or_uart, baudrate)
         else:
             self.uart = machine.UART(port_or_uart, baudrate=baudrate, rx=machine.Pin(rx), tx=machine.Pin(tx), timeout=uart_timeout)
 
