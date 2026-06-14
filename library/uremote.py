@@ -27,8 +27,8 @@ _T_STR = const(83)
 try:
     from lms_esp32 import RX_PIN, TX_PIN
 except ImportError:
-    RX_PIN = 0
-    TX_PIN = 0
+    RX_PIN = None
+    TX_PIN = None
 
 if 'Pybricks' in sys.version:
     _IS_PYBRICKS = True
@@ -76,10 +76,12 @@ class uRemote:
             self._watch = StopWatch()
             self.uart = UARTDevice(port_or_uart, timeout=uart_timeout)
             self.uart.set_baudrate(baudrate)
-        elif 'OpenMV' in sys.version:
-            self.uart = machine.UART(port_or_uart, baudrate)
         else:
-            self.uart = machine.UART(port_or_uart, baudrate=baudrate, rx=machine.Pin(rx), tx=machine.Pin(tx), timeout=uart_timeout)
+            kwargs = {'timeout': uart_timeout, 'baudrate': baudrate}
+            if rx is not None and tx is not None:
+                kwargs['rx'] = machine.Pin(rx)
+                kwargs['tx'] = machine.Pin(tx)
+            self.uart = machine.UART(port_or_uart, **kwargs)
 
     def _ticks(self):
         return self._watch.time() if _IS_PYBRICKS else time.ticks_ms()
