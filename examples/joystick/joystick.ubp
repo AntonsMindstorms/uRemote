@@ -11,7 +11,7 @@ to joy {
   return ('[data:makeList]' (at 1 bytes) (at 2 bytes) (at 3 bytes))
 }
 
-script 199 66 {
+script 209 66 {
 whenStarted
 init
 forever {
@@ -19,25 +19,26 @@ forever {
 }
 }
 
-script 40 219 {
+script 50 219 {
 to joy {}
 }
 
 
 module uremote
 author Ste7an
-version 1 4 
-description 'UART RPC for MicroBlocks. Receive timeout 1000 ms and inter-byte timeout 10 ms are fixed.'
-variables time _last_error
+version 1 5 
+description 'UART RPC for MicroBlocks. Receive timeout 1000 ms and inter-byte timeout 10 ms are fixed.
+'
+variables time _last_error 
 
   spec ' ' 'init' 'uremote init'
-  spec 'r' 'call' 'uremote call _ data _' 'str auto' 'Command' <Reporter v>
+  spec 'r' 'call' 'uremote call _ data _' 'str auto' 'Command' 'SingleValueOrListOfValues'
   spec 'r' 'last error' 'uremote last error'
   spec ' ' 'process' 'uremote process'
-  spec 'r' '_encode' 'encode _ _ data _' 'num str auto' '0 Command' <Reporter v>
+  spec 'r' '_encode' 'encode _ data _ status _' 'str auto num' 'Command' 'SingleValueOrListOfValues' 0
   spec 'r' '_wait and read serial' 'wait and read serial'
   spec 'r' '_decode' 'decode _' 'auto' '10'
-  spec ' ' '_send command' 'send command _ _ data _' 'num str auto' '0 Command' <Reporter v>
+  spec ' ' '_send command' 'send command _ data _ status _' 'str auto num' 'Command' 'SingleValueOrListOfValues' 0
   spec 'r' '_receive command' 'receive command'
   spec ' ' 'flush' 'flush'
 
@@ -45,15 +46,15 @@ to '_decode' encoded {
   local 'tot_len' (size encoded)
   local 'var_list' ('[data:makeList]')
   local 'hdr' (at 1 encoded)
-  local 'l' (mod hdr 32)
-  local 'status' (/ (- hdr l) 32)
-  local 'p' 2
+  local 'l' (hdr % 32)
+  local 'status' ((hdr - l) / 32)
+  local 'p' 1
   local 'cmd' ('[data:newByteArray]' l)
   for i l {
     atPut i cmd (at ((i + p) - 0) encoded)
   }
   cmd = ('[data:convertType]' cmd 'string')
-  p += l
+  p += (l + 1)
   repeatUntil (p > tot_len) {
     local 'type' (at p encoded)
     p += 1
@@ -80,10 +81,10 @@ to '_decode' encoded {
     p += (l + 1)
     var_list = ('[data:join]' var_list ('[data:makeList]' bytes))
   }
-  return ('[data:makeList]' status cmd var_list)
+  return ('[data:makeList]' cmd var_list status)
 }
 
-to '_encode' status cmd list {
+to '_encode' cmd list status {
   if (not (isType list 'list')) {list = ('[data:makeList]' list)}
   local 'list_len' (size list)
   local 'bytes' ('[data:newByteArray]' 0)
@@ -113,7 +114,7 @@ to '_encode' status cmd list {
     }
     all_bytes = ('[data:join]' all_bytes bytes)
   }
-  all_bytes = ('[data:join]' ('[data:asByteArray]' (+ (* status 32) (size cmd))) ('[data:asByteArray]' cmd) all_bytes)
+  all_bytes = ('[data:join]' ('[data:asByteArray]' ((status * 32) + (size cmd))) ('[data:asByteArray]' cmd) all_bytes)
   return all_bytes
 }
 
@@ -125,9 +126,9 @@ to '_receive command' {
   return ('[data:makeList]')
 }
 
-to '_send command' status cmd data {
+to '_send command' cmd data status {
   local 'PREAMBLE' '<$MU'
-  local 'bytes' ('[data:join]' ('[data:asByteArray]' PREAMBLE) ('_encode' status cmd data))
+  local 'bytes' ('[data:join]' ('[data:asByteArray]' PREAMBLE) ('_encode' cmd data status))
   if ((size bytes) > 255) {
     _last_error = 'frame too large'
     return
@@ -149,6 +150,7 @@ to '_wait and read serial' {
     _last_error = 'timeout: no length byte'
     return ('[data:newByteArray]' 0)
   }
+  sayIt tot_len
   local 'buf' ('[data:newByteArray]' (tot_len - 4))
   local 'idx' 1
   local 'frameStart' (millisOp)
@@ -186,17 +188,15 @@ to '_wait and read serial' {
 
 to call cmd data {
   _last_error = ''
-  '_send command' 0 cmd data
+  '_send command' cmd data 0
   local 'rcv' ('_receive command')
   if ((size rcv) == 0) {
-    if (_last_error == '') {
-      _last_error = 'no bytes received'
-    }
+    if (_last_error == '') {_last_error = 'no bytes received'}
     return
   }
-  local 'status' (at 1 rcv)
-  local 'reply_cmd' (at 2 rcv)
-  local 'rcv_data' (at 3 rcv)
+  local 'reply_cmd' (at 1 rcv)
+  local 'rcv_data' (at 2 rcv)
+  local 'status' (at 3 rcv)
   if (not (reply_cmd == cmd)) {
     _last_error = ('[data:join]' 'unexpected reply: ' reply_cmd)
     return
@@ -217,10 +217,6 @@ to call cmd data {
   }
 }
 
-to 'last error' {
-  return _last_error
-}
-
 to flush {
   local 'var' 0
   repeatUntil (('[serial:available]') == 0) {
@@ -235,20 +231,25 @@ to init {
   local 'var' ('[serial:read]')
 }
 
+to 'last error' {
+  return _last_error
+}
+
 to process {
   local 'cmd_data' ('_receive command')
   if (not ((size cmd_data) == 0)) {
-    local 'status' (at 1 cmd_data)
-    local 'cmd' (at 2 cmd_data)
-    local 'data' (at 3 cmd_data)
-    if ('[vars:functionExists]' cmd) {
+    local 'cmd' (at 1 cmd_data)
+    local 'data' (at 2 cmd_data)
+    local 'status' (at 3 cmd_data)
+    if ('[misc:functionExists]' cmd) {
       local 'return' (callCustomReporter cmd data)
       if (not (isType return 'list')) {
         return = ('[data:makeList]' return)
       }
-      '_send command' 0 cmd return
+      '_send command' cmd return 0
     } else {
-      '_send command' 1 cmd ('handler not found')
+      '_send command' cmd 'Handler not found' 1
     }
   }
 }
+
