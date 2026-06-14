@@ -58,6 +58,18 @@ elif _platform == _ESP32:
 PREAMBLE = b'<$MU'
 
 
+class uRemoteError(Exception):
+    pass
+
+
+def _as_values(data):
+    if data is None:
+        return []
+    if isinstance(data, list):
+        return data
+    return [data]
+
+
 class uRemote:
     def __init__(
         self,
@@ -221,6 +233,7 @@ class uRemote:
         self.send_bytes(self.encode(cmd, *data))
 
     def receive_command(self):
+        """Receive and decode one frame. Advanced/debug use."""
         b = self.receive_bytes()
         if b:
             try:
@@ -230,10 +243,28 @@ class uRemote:
                 return "!ERROR", "decode error"
         return "!ERROR", "no bytes received"
 
+    def exchange(self, cmd, *data):
+        """Send a command and return the raw (reply_cmd, payload) tuple."""
+        self.send_command(cmd, *data)
+        return self.receive_command()
+
     def call(self, cmd, *data):
         self.send_command(cmd, *data)
-        self.flush()
-        return self.receive_command()
+        reply_cmd, payload = self.receive_command()
+
+        if reply_cmd == "!ERROR":
+            raise uRemoteError(payload)
+        if reply_cmd == cmd + "_err":
+            raise uRemoteError(payload if isinstance(payload, str) else str(payload))
+        if reply_cmd != cmd + "_ack":
+            raise uRemoteError("unexpected reply: " + reply_cmd)
+
+        values = _as_values(payload)
+        if len(values) == 0:
+            return None
+        if len(values) == 1:
+            return values[0]
+        return tuple(values)
 
     def process(self):
         cmd, data = self.receive_command()

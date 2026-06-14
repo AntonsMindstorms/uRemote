@@ -13,8 +13,7 @@ ur=uRemote(Port.S1)
 hub.screen.clear()
 
 while True:
-    ack, resp = ur.call('joy')
-    x,y,pressed = resp
+    x, y, pressed = ur.call('joy')
     print(x,y,pressed)
     hub.screen.draw_circle(x*178//256,128-y//2,2,True)
     if pressed==1:

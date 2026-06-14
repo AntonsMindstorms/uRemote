@@ -16,7 +16,7 @@ s=StopWatch()
 for j in range(100):
     #uu.send_command('test',i,i+2)
     #cmd,data = ur.receive_command()
-    cmd,data = ur.call('test',i,i+2)
+    cmd, data = ur.exchange('test', i, i+2)
     print(cmd,data)
     #wait(1)
     i+=1

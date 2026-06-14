@@ -11,8 +11,7 @@ ur=uRemote(Port.A)
 
 
 while True:
-    err,data=ur.call('joy')
-    x,y,press=data
+    x, y, press = ur.call('joy')
     print(x,y)
     hub.display.off()
     hub.display.pixel(x//52,y//52,100)

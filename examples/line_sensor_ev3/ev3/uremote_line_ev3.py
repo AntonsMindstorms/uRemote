@@ -5,7 +5,7 @@ from pybricks.tools import wait, StopWatch
 
 hub = EV3Brick()
 
-from uremote import uRemote
+from uremote import uRemote, uRemoteError
 
 ur=uRemote(Port.S1)
 
@@ -13,13 +13,8 @@ s=StopWatch()
 cnt=0
 for i in range(1000):
     try:
-        err,data=ur.call('sen')
-        #print(data)
-        #wait(100)
-        #hex_str = ' '.join('{:02X}'.format(b) for b in data)
-        #print(i,hex_str)
-        cnt+=1
-        #print(i,data)
-    except Exception:
+        data = ur.call('sen')
+        cnt += 1
+    except uRemoteError:
         print('error -------')
 print(s.time(),cnt)
