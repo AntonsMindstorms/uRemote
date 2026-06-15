@@ -248,7 +248,12 @@ class uRemote:
 
         Looks up a function named like the command in ``__main__``, calls it
         with the decoded arguments, and sends back the return value(s).
+
+        Returns immediately when the UART receive buffer is empty, so it is
+        safe to call in a tight loop.
         """
+        if not self._waiting():
+            return
         status, cmd, data = self._recv_command()
         if status != STATUS_OK or not cmd:
             return
