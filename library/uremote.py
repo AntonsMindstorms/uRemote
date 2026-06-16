@@ -266,7 +266,8 @@ class uRemote:
             try:
                 resp = getattr(__main__, cmd)(*data)
             except Exception as e:
-                self._send_command(cmd, cmd + ": " + e, status=STATUS_ERR)
+                self._send_command(cmd, cmd + ": " + str(e), status=STATUS_ERR)
+                return
             if resp is None:
                 resp = ()
             elif not isinstance(resp, tuple):
