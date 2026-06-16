@@ -34,6 +34,7 @@ if 'Pybricks' in sys.version:
     _IS_PYBRICKS = True
     from pybricks.iodevices import UARTDevice
     from pybricks.tools import StopWatch, wait
+    from pybricks.parameters import Port
 else:
     _IS_PYBRICKS = False
     import time
@@ -74,6 +75,8 @@ class uRemote:
         self._last_rx_error = None
         if _IS_PYBRICKS:
             self._watch = StopWatch()
+            if isinstance(port_or_uart, str):
+                port_or_uart = eval("Port."+port_or_uart)
             self.uart = UARTDevice(port_or_uart, timeout=uart_timeout)
             self.uart.set_baudrate(baudrate)
         else:
@@ -255,11 +258,15 @@ class uRemote:
         if not isinstance(data, list):
             data = [data]
         if hasattr(__main__, cmd):
-            resp = getattr(__main__, cmd)(*data)
+            try:
+                resp = getattr(__main__, cmd)(*data)
+            except Exception as e:
+                self._send_command(cmd, cmd + ": " + e, status=STATUS_ERR)
             if resp is None:
                 resp = ()
             elif not isinstance(resp, tuple):
                 resp = (resp,)
             self._send_command(cmd, *resp, status=STATUS_OK)
         else:
-            self._send_command(cmd, "handler not found: " + cmd, status=STATUS_ERR)
+            self._send_command(cmd, cmd + ": handler not found", status=STATUS_ERR)
+
