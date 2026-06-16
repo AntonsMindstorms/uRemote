@@ -124,30 +124,30 @@ class uRemote:
         while self._elapsed(start) < self.wait_recv and not self._waiting():
             self._pause(1)
         if not self._waiting():
-            return self._fail_rx("no length byte")
+            return self._fail_rx("No data. Is remote script running?")
 
         length = self._read_byte()
         if length is None or length < MIN_FRAME or length > MAX_FRAME:
-            return self._fail_rx("no length byte" if length is None else "invalid frame length")
+            return self._fail_rx("No length byte. Is remote script running?" if length is None else "Invalid frame length")
 
         payload = bytearray()
         total_start = byte_start = self._ticks()
         pre = 0
         while len(payload) < length:
             if self._elapsed(total_start) > self.wait_recv:
-                return self._fail_rx("incomplete frame")
+                return self._fail_rx("Incomplete frame.")
             if self._waiting():
                 b = self._read_byte()
                 if b is None:
-                    return self._fail_rx("incomplete frame")
+                    return self._fail_rx("Incomplete frame.")
                 payload.append(b)
                 if pre < PREAMBLE_LEN:
                     if b != PREAMBLE[pre]:
-                        return self._fail_rx("preamble mismatch")
+                        return self._fail_rx("Preamble mismatch.")
                     pre += 1
                 byte_start = self._ticks()
             elif self._elapsed(byte_start) > self.byte_timeout:
-                return self._fail_rx("inter-byte timout")
+                return self._fail_rx("Inter-byte timeout.")
             else:
                 self._pause(1)
         return bytes(payload[PREAMBLE_LEN:])
@@ -274,5 +274,5 @@ class uRemote:
                 resp = (resp,)
             self._send_command(cmd, *resp, status=STATUS_OK)
         else:
-            self._send_command(cmd, cmd + ": handler not found", status=STATUS_ERR)
+            self._send_command(cmd, cmd + "() function not found remotely", status=STATUS_ERR)
 
