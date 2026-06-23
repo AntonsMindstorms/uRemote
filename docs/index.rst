@@ -5,7 +5,7 @@ uRemote is a small UART RPC library for pairing **Pybricks LEGO hubs** with **LM
 
 Typical setup: a Pybricks hub is the **client** (``call``) and an ESP32 running MicroPython or MicroBlocks is the **server** (``process``).
 
-The wire format is a stripped-down version of the `UARTRemote <https://github.com/scopeland-UARTRemote>`_ protocol.
+The wire format is a stripped-down version of the `UartRemote <https://github.com/AntonsMindstorms/UartRemote>`_ protocol.
 
 Source repository: `uRemote on GitHub <https://github.com/AntonsMindstorms/uRemote>`_.
 
