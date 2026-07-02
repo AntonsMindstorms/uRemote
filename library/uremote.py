@@ -75,7 +75,7 @@ class uRemote:
             tx: ESP32 TX pin (ignored on Pybricks), default from firmware.
         """
 
-    def __init__(self, port_or_uart=1, baudrate=115200, wait_recv=1000, uart_timeout=1000, rx=RX_PIN, tx=TX_PIN):
+    def __init__(self, port_or_uart=1, baudrate=115200, wait_recv=1000, uart_timeout=1000, rx=RX_PIN, tx=TX_PIN, power_pin=2):
         self.byte_timeout = 10
         self.wait_recv = wait_recv
         self._last_rx_error = None
@@ -83,7 +83,7 @@ class uRemote:
             self._watch = StopWatch()
             if isinstance(port_or_uart, str):
                 port_or_uart = eval("Port."+port_or_uart)
-            self.uart = UARTDevice(port_or_uart, timeout=uart_timeout)
+            self.uart = UARTDevice(port_or_uart, timeout=uart_timeout, power_pin=power_pin)
             self.uart.set_baudrate(baudrate)
         else:
             kwargs = {'timeout': uart_timeout, 'baudrate': baudrate}
