@@ -124,7 +124,6 @@ to '_wait and read serial' {
     _last_error = 'timeout: no length byte'
     return ('[data:newByteArray]' 0)
   }
-  sayIt tot_len
   local 'buf' ('[data:newByteArray]' (tot_len - 4))
   local 'idx' 1
   local 'frameStart' (millisOp)
