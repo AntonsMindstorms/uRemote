@@ -5,7 +5,7 @@
 __author__ = "Anton Vanhoucke & Ste7an"
 __copyright__ = "Copyright 2024,2025,2026 AntonsMindstorms.com"
 __license__ = "GPL"
-__version__ = "1.1"
+__version__ = "1.2"
 __status__ = "Production"
 
 import __main__
