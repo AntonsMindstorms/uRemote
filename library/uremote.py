@@ -85,6 +85,7 @@ class uRemote:
                 port_or_uart = eval("Port."+port_or_uart)
             self.uart = UARTDevice(port_or_uart, timeout=uart_timeout, power_pin=power_pin)
             self.uart.set_baudrate(baudrate)
+            self.uart.readall()
         else:
             kwargs = {'timeout': uart_timeout, 'baudrate': baudrate}
             if rx is not None and tx is not None:
