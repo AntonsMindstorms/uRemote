@@ -1,3 +1,8 @@
+.. image:: uremote.png
+   :alt: uRemote logo
+   :width: 200
+   :align: center
+
 uRemote documentation
 =====================
 
@@ -171,7 +176,12 @@ Constructor options
        baudrate=115200,
        wait_recv=1000,   # overall frame receive timeout (ms)
        uart_timeout=1000,# per-read UART timeout (ms)
+       power_pin=2,      # Pybricks only: 8V on P1 (1) or P2 (2); 0 = off
    )
+
+On Pybricks hubs with the ``UARTDevice_power_pin`` firmware patch, ``power_pin`` enables 8V on P1 (``1``) or P2 (``2``). Default is ``2``, which matches LMS-ESP32 and SPIKE-OPENMV wiring. Set to ``0`` to leave P1/P2 unpowered. This argument is ignored on ESP32.
+
+8V power is only switched on **while your program is running** — it turns off when the program stops. The **first time** you request 8V power in a program, Pybricks will prompt you on the hub to confirm.
 
 Inter-byte timeout (``byte_timeout``) is fixed at **10 ms**.
 

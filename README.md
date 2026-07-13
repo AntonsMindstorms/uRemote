@@ -1,3 +1,6 @@
+<div align="center">
+<img alt="uRemote logo" src="https://raw.githubusercontent.com/AntonsMindstorms/uRemote/main/docs/uremote.png" width="200">
+
 # uRemote
 
 uRemote is a small UART RPC library for pairing **Pybricks LEGO hubs** with **LMS-ESP32 / MicroBlocks** devices. One side defines plain functions; the other side calls them over serial.
@@ -5,6 +8,8 @@ uRemote is a small UART RPC library for pairing **Pybricks LEGO hubs** with **LM
 Typical setup: a Pybricks hub is the **client** (`call`) and an ESP32 running MicroPython or MicroBlocks is the **server** (`process`).
 
 The wire format is a stripped-down version of the [UARTRemote](https://github.com/scopeland-UARTRemote) protocol.
+
+</div>
 
 ## Getting started
 
@@ -157,8 +162,13 @@ ur = uRemote(
     baudrate=115200,
     wait_recv=1000,   # overall frame receive timeout (ms)
     uart_timeout=1000,# per-read UART timeout (ms)
+    power_pin=2,      # Pybricks only: 8V on P1 (1) or P2 (2); 0 = off
 )
 ```
+
+On Pybricks hubs with the [`UARTDevice_power_pin`](pybricks_firmware/UARTDevice_power_pin/) firmware patch, `power_pin` enables 8V on P1 (`1`) or P2 (`2`). Default is `2`, which matches LMS-ESP32 and SPIKE-OPENMV wiring. Set to `0` to leave P1/P2 unpowered. This argument is ignored on ESP32.
+
+8V power is only switched on **while your program is running** — it turns off when the program stops. The **first time** you request 8V power in a program, Pybricks will prompt you on the hub to confirm.
 
 Inter-byte timeout (`byte_timeout`) is fixed at **10 ms**.
 

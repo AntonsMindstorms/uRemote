@@ -73,6 +73,7 @@ class uRemote:
             uart_timeout: Per-read UART timeout in milliseconds, default 1000.
             rx: ESP32 RX pin (ignored on Pybricks), default from firmware.
             tx: ESP32 TX pin (ignored on Pybricks), default from firmware.
+            power_pin: Pybricks 8V power pin, default 2 for LMS-ESP32 and SPIKE-OPENMV. Set to 0 to disable power.
         """
 
     def __init__(self, port_or_uart=1, baudrate=115200, wait_recv=1000, uart_timeout=1000, rx=RX_PIN, tx=TX_PIN, power_pin=2):
