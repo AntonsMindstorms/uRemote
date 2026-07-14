@@ -298,7 +298,7 @@ class BluePad:
 
     # ---------- Servo helpers ----------
 
-    def set_servo(self, servo_nr, pos, zero_is_mid=True):
+    def servo(self, servo_nr, pos, zero_is_mid=True):
         """Sets servo motor to the specified positions.
 
         Args:
@@ -316,9 +316,15 @@ class BluePad:
             return self.call("servo_off")
         return self.call("servo_off", int(servo_nr))
 
-    def servos(self, positions):
+    def servos(self, positions, zero_is_mid=True):
+        """Sets multiple servo motors to the specified positions.
+
+        Args:
+            servo_tgts (list of int): Target positions for each servo motor.
+            zero_is_mid (bool, optional): If True, 0 maps to 90° (midpoint). Defaults to True.
+        """
         for i in range(len(positions)):
-            self.set_servo(i, positions[i])
+            self.servo(i, positions[i], zero_is_mid)
 
     # ---------- I2C helpers ----------
 
@@ -487,7 +493,7 @@ def fill_neopixel(color, intensity=1, write=True):
 
 
 def set_servo(servo_nr, angle):
-    return _bp.set_servo(int(servo_nr), int(angle))
+    return _bp.servo(int(servo_nr), int(angle))
 
 
 def servo_off(servo_nr=None):
