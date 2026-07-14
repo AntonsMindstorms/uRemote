@@ -243,6 +243,7 @@ class uRemote:
         Raises:
             uRemoteError: On transport, protocol, or remote handler errors.
         """
+        self.flush()
         self._send_command(cmd, *data)
         status, reply_cmd, payload = self._recv_command()
 
@@ -251,6 +252,7 @@ class uRemote:
             raise uRemoteError(payload if isinstance(payload, str) else str(payload))
         # Reply must echo the requested command name
         if reply_cmd != cmd:
+            self.flush()
             raise uRemoteError("unexpected reply: " + reply_cmd)
         return _unwrap_result(payload)
 
