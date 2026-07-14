@@ -84,9 +84,10 @@ class BluePad:
         return bytes([int(v) & 0xFF for v in data])
 
     def _axis_signed(self, value, deadzone=10):
-        if abs(value) < deadzone:
+        v = int(value-128)
+        if abs(v) < deadzone:
             return 0
-        return int(value) - 128
+        return v
 
     def _rgb(self, color):
         r, g, b = color
