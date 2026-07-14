@@ -83,7 +83,9 @@ class BluePad:
             return bytes([data & 0xFF])
         return bytes([int(v) & 0xFF for v in data])
 
-    def _axis_signed(self, value):
+    def _axis_signed(self, value, deadzone=10):
+        if abs(value) < deadzone:
+            return 0
         return int(value) - 128
 
     def _rgb(self, color):
@@ -114,7 +116,7 @@ class BluePad:
 
     # ---------- Gamepad reads ----------
 
-    def gamepad(self, raw=False, **kwargs):
+    def gamepad(self, raw=False, deadzone=10, **kwargs):
         """
         Read the gamepad state. Joystick values are approximately -128..127 with 0 near center.
 
@@ -134,10 +136,10 @@ class BluePad:
             return data
         if len(data) >= 7 and data[0]: # Enough data AND gamepad connected
             return (
-                self._axis_signed(data[1]),
-                self._axis_signed(data[2]),
-                self._axis_signed(data[3]),
-                self._axis_signed(data[4]),
+                self._axis_signed(data[1], deadzone),
+                self._axis_signed(data[2], deadzone),
+                self._axis_signed(data[3], deadzone),
+                self._axis_signed(data[4], deadzone),
                 int(data[5]),
                 int(data[6]),
             )
