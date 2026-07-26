@@ -118,7 +118,7 @@ class uRemote:
     def flush(self):
         """Discard all bytes waiting in the UART receive buffer."""
         while self._waiting():
-            self.uart.read_all() if _IS_PYBRICKS else self.uart.read()
+            self.uart.read_all() if _IS_PYBRICKS else self.uart.read(1)
 
     def _send_bytes(self, payload):
         frame = PREAMBLE + payload
