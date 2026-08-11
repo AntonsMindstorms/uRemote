@@ -5,7 +5,7 @@
 
 uRemote is a small UART RPC library for pairing **Pybricks LEGO hubs** with **LMS-ESP32 / MicroBlocks** devices. One side defines plain functions; the other side calls them over serial.
 
-Typical setup: a Pybricks hub is the **client** (`call`) and an ESP32 running MicroPython or MicroBlocks is the **server** (`process`).
+Typical setup: a Pybricks hub is the **client** (`call` / `call_async`) and an ESP32 running MicroPython or MicroBlocks is the **server** (`process`).
 
 The wire format is a stripped-down version of the [UARTRemote](https://github.com/scopeland-UARTRemote) protocol.
 
@@ -80,7 +80,7 @@ except uRemoteError as e:
     print('failed:', e)
 ```
 
-More examples are in [`examples/`](examples/) (joystick, IMU, LED, line sensor). Minimal pairs are in [`examples/hello/`](examples/hello/).
+More examples are in [`examples/`](examples/) (joystick, IMU, LED, line sensor, async multitask). Minimal pairs are in [`examples/hello/`](examples/hello/).
 
 ---
 
@@ -122,6 +122,48 @@ except uRemoteError as e:
 ```
 
 `call()` checks that the reply command matches the request and that the status byte is `0`. You never handle status bytes or command suffixes yourself.
+
+<p align="center">
+  <img alt="Pybricks blocks using ur.call in one loop" src="docs/pybricks-blocks-sync-demo.png" width="520">
+</p>
+
+### Client (async): `call_async(cmd, *args)`
+
+Same return semantics as `call()`, but yields while waiting on UART so other Pybricks tasks can run under `multitask()` / `run_task()`. Complete request/reply transactions are serialized with a cooperative lock.
+
+Under `run_task()`, switch method calls from sync `call` to `await` (`call_async`). Sync `call()` will not work there:
+
+<p align="center">
+  <img alt="Pybricks blocks dropdown switching call to await" src="docs/change-call-into-await.png" width="420">
+</p>
+
+```python
+from pybricks.tools import multitask, run_task, wait
+from uremote import uRemote
+
+ur = uRemote(Port.A)
+
+async def telemetry():
+    while True:
+        print(await ur.call_async('Kp'))
+        await wait(0)
+
+async def motor_task():
+    while True:
+        speed = await ur.call_async('motor')
+        await wait(0)
+
+async def main():
+    await multitask(telemetry(), motor_task())
+
+run_task(main())
+```
+
+Use `call_async()` consistently from every task that shares the same `uRemote`. Do not mix with sync `call()` while multitasking. `call_async()` is Pybricks-only; the ESP32 server stays sync (`process()`). See [`examples/uremote_async/`](examples/uremote_async/).
+
+<p align="center">
+  <img alt="Pybricks blocks using await call_async in two programs" src="docs/pybricks-blocks-async-demo.png" width="520">
+</p>
 
 ### Server: `process()`
 

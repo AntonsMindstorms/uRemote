@@ -1,17 +1,15 @@
 from pybricks.hubs import PrimeHub
-from pybricks.parameters import Axis, Direction, Port
-from pybricks.pupdevices import Motor
+from pybricks.parameters import Axis, Port
 from pybricks.tools import multitask, run_task, wait
 
-from uremote_async import uRemote
-import uremote_async
+from uremote import uRemote
+import uremote
 
-print(uremote_async.__version__)
+print(uremote.__version__)
 
 prime_hub = PrimeHub()
 ur = uRemote(Port.C)
 
-#motor = Motor(Port.F, Direction.CLOCKWISE)
 dc_pct = 0
 
 
@@ -24,7 +22,7 @@ async def main1():
             round(prime_hub.imu.rotation(Axis.Z)),
         )
 
-        print("kp",await ur.call_async("Kp"))
+        print("kp", await ur.call_async("Kp"))
 
         # Give another RPC task an opportunity to acquire uRemote.
         await wait(0)
@@ -37,7 +35,7 @@ async def main2():
 
     while True:
         dc_pct = await ur.call_async("motor")
-        print("motor",dc_pct)
+        print("motor", dc_pct)
 
         # Give another RPC task an opportunity to acquire uRemote.
         await wait(0)
