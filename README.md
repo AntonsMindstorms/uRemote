@@ -28,6 +28,8 @@ See [`pybricks_firmware/old_firmwares/README.md`](pybricks_firmware/old_firmware
 
 Copy [`library/uremote.py`](library/uremote.py) to your Pybricks hub project as `uremote.py`.
 
+For **Pybricks Blocks**, also copy [`library/uremote_template_blocks.py`](library/uremote_template_blocks.py) into the same project and open it in the [Pybricks code editor](https://code.pybricks.com). The first line stores the Blocks workspace, so the editor restores the visual program.
+
 For MicroBlocks on the ESP32 side, import the [`library/uremote.ubl`](library/uremote.ubl) library.
 
 ### 3. Wire the devices
@@ -81,6 +83,16 @@ except uRemoteError as e:
 ```
 
 More examples are in [`examples/`](examples/) (joystick, IMU, LED, line sensor, async multitask). Minimal pairs are in [`examples/hello/`](examples/hello/).
+
+### 5. Pybricks Blocks starter
+
+[`library/uremote_template_blocks.py`](library/uremote_template_blocks.py) is a saved Blocks program. Open it in the Pybricks code editor (with `uremote.py` in the same project) to start from this workspace:
+
+<p align="center">
+  <img alt="Pybricks Blocks starter: import uRemote on port A, then send rounded hub IMU rotation as spike_data" src="docs/uremote_template_blocks.png" width="420">
+</p>
+
+It sets up a Prime Hub, creates `ur` on port `A`, and loops `ur.call('spike_data', …)` with the hub IMU X rotation. Round sensor values before sending — uRemote cannot send floats yet. Change the command name and arguments to match handlers on the ESP32.
 
 ---
 
@@ -307,6 +319,7 @@ If the preamble does not match, the UART buffer is flushed and the frame is disc
 | Path | Purpose |
 |------|---------|
 | [`library/uremote.py`](library/uremote.py) | Pybricks + ESP32 MicroPython library |
+| [`library/uremote_template_blocks.py`](library/uremote_template_blocks.py) | Pybricks Blocks starter (hub client) |
 | [`library/uremote.ubl`](library/uremote.ubl) | MicroBlocks library |
 | [`examples/hello/`](examples/hello/) | Minimal hub + ESP32 ping pair |
 | [`examples/`](examples/) | Joystick, IMU, LED, line sensor demos |

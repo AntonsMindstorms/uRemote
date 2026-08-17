@@ -10,6 +10,8 @@ uRemote is a small UART RPC library for pairing **Pybricks LEGO hubs** with **LM
 
 Typical setup: a Pybricks hub is the **client** (``call`` / ``call_async``) and an ESP32 running MicroPython or MicroBlocks is the **server** (``process``).
 
+For LMS-ESP32 boards running the BluePad32 uRemote firmware, ``library/bluepad_ur.py`` provides a Pybricks ``BluePad`` helper (gamepad, NeoPixels, servos, I2C, Bluetooth pairing) on top of ``uremote``.
+
 The wire format is a stripped-down version of the `UartRemote <https://github.com/AntonsMindstorms/UartRemote>`_ protocol.
 
 Source repository: `uRemote on GitHub <https://github.com/AntonsMindstorms/uRemote>`_.
@@ -33,6 +35,8 @@ Copy the library
 ~~~~~~~~~~~~~~~~
 
 Copy ``library/uremote.py`` to your Pybricks hub project as ``uremote.py``.
+
+For **Pybricks Blocks**, also copy ``library/uremote_template_blocks.py`` into the same project and open it in the `Pybricks code editor <https://code.pybricks.com>`_. The first line stores the Blocks workspace, so the editor restores the visual program.
 
 For MicroBlocks on the ESP32 side, import the ``library/uremote.ubl`` library.
 
@@ -94,6 +98,17 @@ Hello world
        print('failed:', e)
 
 More examples are in the repository ``examples/`` folder (joystick, IMU, LED, line sensor, async multitask). Minimal pairs are in ``examples/hello/``.
+
+Pybricks Blocks starter
+~~~~~~~~~~~~~~~~~~~~~~~
+
+``library/uremote_template_blocks.py`` is a saved Blocks program. Open it in the Pybricks code editor (with ``uremote.py`` in the same project) to start from this workspace:
+
+.. image:: uremote_template_blocks.png
+   :alt: Pybricks Blocks starter: import uRemote on port A, then send rounded hub IMU rotation as spike_data
+   :width: 420
+
+It sets up a Prime Hub, creates ``ur`` on port ``A``, and loops ``ur.call('spike_data', …)`` with the hub IMU X rotation. Round sensor values before sending — uRemote cannot send floats yet. Change the command name and arguments to match handlers on the ESP32.
 
 Python API
 ----------
@@ -305,7 +320,21 @@ Status values: ``0`` = OK, ``1`` = error reply.
 API Reference
 -------------
 
+uremote
+~~~~~~~
+
 .. automodule:: uremote
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
+bluepad_ur
+~~~~~~~~~~
+
+Pybricks helper for LMS-ESP32 boards running the BluePad32 uRemote firmware.
+Upload ``library/bluepad_ur.py`` together with ``uremote.py``.
+
+.. automodule:: bluepad_ur
    :members:
    :undoc-members:
    :show-inheritance:

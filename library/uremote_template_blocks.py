@@ -1,12 +1,17 @@
-from pybricks.parameters import Port
+# pybricks blocks file:{"blocks":{"languageVersion":0,"blocks":[{"type":"blockGlobalSetup","id":"bjK,wS1MYO7aiYkFSwd{","x":183,"y":4,"deletable":false,"next":{"block":{"type":"variables_set_prime_hub","id":"DK66]/RnE5/v#cjA!}~:","extraState":{"optionLevel":0},"fields":{"VAR":{"id":"W6sMT0w#Xp4d_9Et+37M"}},"next":{"block":{"type":"variables_setup_imported_function","id":"`LY|o9I=D;--k)7,@8.^","fields":{"FROM_MODULE":"uremote","VAR":{"id":"6xh^-kr;Nk3C}PMM!h8E"}},"next":{"block":{"type":"variables_setup_object_instance","id":"_KbT4~5a,$%Bzty47;p[","extraState":{"optionLevel":1},"fields":{"VAR":{"id":"V/E6B5%.nemMK*D9b5U*"},"CLASS_NAME":"uRemote"},"inputs":{"ARG0":{"shadow":{"type":"blockMathNumber","id":"Rvx59@CD1I)EVk9*spHT","fields":{"NUM":0}},"block":{"type":"blockTextLiteral","id":"|l78?h7%-G.q6r*x@bdk","fields":{"TEXT":"A"}}}}}}}}}}},{"type":"blockGlobalStart","id":"3tJe|AWl0baN(wH9a$@.","x":176,"y":233,"deletable":false,"next":{"block":{"type":"blockFlowWhile","id":"3[LP@^xV-^Jj(W[BECl[","fields":{"MODE":"WHILE"},"inputs":{"BOOL":{"shadow":{"type":"blockLogicTrue","id":"Wk[o#+`I(^Fx2??![|a+"}},"DO":{"block":{"type":"blockComment","id":"wLH,8XpH^ORZO/ps+;D}","fields":{"FIELDNAME":"Call the 'call' method, with 'spike_data' as argument, \nfollowed by the date you want to send. \nuRemote cannot send floats (yet). So round numbers before sending them."},"next":{"block":{"type":"blockObjectInstanceCallStatement","id":"@EIil}xzZiA?:Ph`M,:f","extraState":{"optionLevel":2},"fields":{"CALL_TYPE":"CLASS_CALL_METHOD_SYNC","METHOD":"call"},"inputs":{"VAR":{"shadow":{"type":"variables_get_object_instance","id":"-`J=x`M5{(Nv0T|(dtw%","fields":{"VAR":{"id":"V/E6B5%.nemMK*D9b5U*","name":"ur","type":"ObjectInstance"}}}},"ARG0":{"shadow":{"type":"blockMathNumber","id":")DqoNS4lsD~eI`=C8upf","fields":{"NUM":0}},"block":{"type":"blockTextLiteral","id":"ve`XrkRWr$E?H#x#O(nR","fields":{"TEXT":"spike_data"}}},"ARG1":{"shadow":{"type":"blockMathNumber","id":"|QtgLtaUTy,+~2_Zw~=|","fields":{"NUM":0}},"block":{"type":"blockMathOp","id":"0fVF~2aeVMdBh7$|2C-*","extraState":{"optionLevel":0},"fields":{"OP":"ROUND"},"inputs":{"NUM":{"shadow":{"type":"blockMathNumber","id":"Ic`H6S@zfq=_sv2SuKEu","fields":{"NUM":0}},"block":{"type":"blockImuRotation","id":"r!x5eb@dxRRoXW%wy]J4","extraState":{"optionLevel":0},"fields":{"METHOD":"IMU_GET_ROTATION"},"inputs":{"VAR":{"shadow":{"type":"variables_get_imu_hub","id":"fV9`Un{#A^*@R,l3wEXi","fields":{"VAR":{"id":"W6sMT0w#Xp4d_9Et+37M","name":"prime hub","type":"PrimeHub"}}}},"VALUE0":{"shadow":{"type":"blockParametersAxis","id":"cTm{9Q0S/UAv{PxKh3S6","fields":{"VALUE":"x"}}}}}}}}}}}}}}}}}}]},"variables":[{"name":"red","id":"-Ur#MHXb^dQ7*15{u5qa","type":"ColorDef"},{"name":"orange","id":"1+x01CpJchv=?|;]lx67","type":"ColorDef"},{"name":"yellow","id":"E)q43Rzl,};Fvnr9`-+t","type":"ColorDef"},{"name":"green","id":"^c_$/E?z{:!#}#{QR:jn","type":"ColorDef"},{"name":"cyan","id":".=$REb?gv6I3|-]E-og|","type":"ColorDef"},{"name":"blue","id":"HvW1|LiMd_y?J7xt`j0T","type":"ColorDef"},{"name":"violet","id":"^A/A|@KQH*74kUtnvo_[","type":"ColorDef"},{"name":"magenta","id":"sqpDm9tYz5+#NZFQ0N[j","type":"ColorDef"},{"name":"white","id":"BtrNFR;=:sp3~WB|}f`T","type":"ColorDef"},{"name":"none","id":"x9R~Yvb7qMdz3+ij9%H(","type":"ColorDef"},{"name":"prime hub","id":"W6sMT0w#Xp4d_9Et+37M","type":"PrimeHub"},{"name":"uRemote","id":"6xh^-kr;Nk3C}PMM!h8E","type":"FunctionImported"},{"name":"ur","id":"V/E6B5%.nemMK*D9b5U*","type":"ObjectInstance"}],"info":{"type":"pybricks","version":"2.0.0"},"workspaceOptions":{"scrollX":70.14267737973455,"scrollY":112.57853456261248,"scale":0.677572112909863}}
+from pybricks.hubs import PrimeHub
+from pybricks.parameters import Axis
+
 from uremote import uRemote
 
+# Set up.
+prime_hub = PrimeHub()
+ur = uRemote('A')
 
-def test(a, b):
-    return a + b
 
-
-ur = uRemote(Port.A)
-print('Hello, Pybricks!')
+# The main program starts here.
 while True:
-    ur.call('imu', 100, 2000, 300)
+    # Call the 'call' method, with 'spike_data' as argument,
+    # followed by the date you want to send.
+    # uRemote cannot send floats (yet). So round numbers before sending them.
+    ur.call('spike_data', round(prime_hub.imu.rotation(Axis.X)))
