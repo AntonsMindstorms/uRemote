@@ -22,14 +22,8 @@ Getting started
 Flash Pybricks firmware with UARTDevice
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-Standard Pybricks firmware does not include ``UARTDevice``. Use a patched build from the uRemote repository:
-
-1. Clone or download the `uRemote repository <https://github.com/AntonsMindstorms/uRemote>`_.
-2. Open the `Pybricks code editor <https://code.pybricks.com>`_ and put your hub in firmware update mode.
-3. Enable **Advanced options** → **Use local firmware file**.
-4. Select the firmware for your hub from ``pybricks_firmware/``.
-
-See ``pybricks_firmware/old_firmwares/README.md`` in the repository for platform-specific notes. If you power NeoPixels or servos from the hub port, use the ``UARTDevice_power_pin`` patch.
+Standard Pybricks firmware now includes ``UARTDevice``. It has a power_pin argument that can be used to power the ESP32. 
+The first time you request 8V power in a program, Pybricks will prompt you on the hub to confirm. Press Y in the `>>>` REPL terminal.
 
 Copy the library
 ~~~~~~~~~~~~~~~~
@@ -252,7 +246,7 @@ Constructor options
        power_pin=2,      # Pybricks only: 8V on P1 (1) or P2 (2); 0 = off
    )
 
-On Pybricks hubs with the ``UARTDevice_power_pin`` firmware patch, ``power_pin`` enables 8V on P1 (``1``) or P2 (``2``). Default is ``2``, which matches LMS-ESP32 and SPIKE-OPENMV wiring. Set to ``0`` to leave P1/P2 unpowered. This argument is ignored on ESP32.
+On Pybricks hubs, ``power_pin`` enables 8V on P1 (``1``) or P2 (``2``). Default is ``2``, which matches LMS-ESP32 and SPIKE-OPENMV wiring. Set to ``0`` to leave P1/P2 unpowered. This argument is ignored on ESP32.
 
 8V power is only switched on **while your program is running** — it turns off when the program stops. The **first time** you request 8V power in a program, Pybricks will prompt you on the hub to confirm.
 
