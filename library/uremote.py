@@ -105,7 +105,7 @@ class uRemote:
             self._elapsed = lambda start: time.ticks_diff(time.ticks_ms(), start)
             self._pause = time.sleep_ms
             self._waiting = self.uart.any
-            self._drain = self.uart.read
+            self._drain = lambda: self.uart.read(1)
 
     def _fail_rx(self, error):
         self.flush()
