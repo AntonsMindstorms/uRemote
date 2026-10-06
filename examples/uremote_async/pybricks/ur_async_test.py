@@ -15,14 +15,14 @@ dc_pct = 0
 
 async def main1():
     while True:
-        await ur.call_async(
+        await ur.call(
             "spike_data",
             round(prime_hub.imu.rotation(Axis.X)),
             round(prime_hub.imu.rotation(Axis.Y)),
             round(prime_hub.imu.rotation(Axis.Z)),
         )
 
-        print("kp", await ur.call_async("Kp"))
+        print("kp", await ur.call("Kp"))
 
         # Give another RPC task an opportunity to acquire uRemote.
         await wait(0)
@@ -34,7 +34,7 @@ async def main2():
     prime_hub.imu.reset_heading(0)
 
     while True:
-        dc_pct = await ur.call_async("motor")
+        dc_pct = await ur.call("motor")
         print("motor", dc_pct)
 
         # Give another RPC task an opportunity to acquire uRemote.

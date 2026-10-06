@@ -25,6 +25,11 @@ MAX_CMD_LEN = const(31)
 PREAMBLE = b'<$MU'
 PREAMBLE_LEN = const(4)
 
+# Step-generator requests, see uRemote._recv_steps().
+_READ = const(0)
+_PAUSE = const(1)
+_WRITE = const(2)
+
 _T_BOOL = const(66)
 _T_NUM = const(78)
 _T_BYTES = const(65)
@@ -112,12 +117,6 @@ class uRemote:
         self._last_rx_error = "Read error: " + error
         return b''
 
-    def _require_sync_uart(self):
-        # Under run_task(), UARTDevice write/read must be awaited — sync call()
-        # would return Async handles and never actually transfer bytes.
-        if _IS_PYBRICKS and run_task():
-            raise uRemoteError("use call_async() under run_task()/multitask()")
-
     def flush(self):
         """Discard all bytes waiting in the UART receive buffer."""
         while self._waiting():
@@ -129,27 +128,18 @@ class uRemote:
             raise uRemoteError("frame too large")
         return bytes([len(frame)]) + frame
 
-    def _send_bytes(self, payload):
-        self.uart.write(self._packet(payload))
-
-    def _read_byte(self):
-        # Sync path only. From an async task on Pybricks, use _read_byte_async().
-        b = self.uart.read(1)
-        return b[0] if b else None
-
-    async def _read_byte_async(self):
-        b = await self.uart.read(1)
-        return b[0] if b else None
-
-    def _recv_bytes(self):
+    def _recv_steps(self):
+        # Frame reader written once for both modes. It is a generator that
+        # yields _READ to get one byte (sent back in) and _PAUSE to wait,
+        # so _drive() and _drive_async() decide how the I/O is done.
         self._last_rx_error = None
         start = self._ticks()
         while self._elapsed(start) < self.wait_recv and not self._waiting():
-            self._pause(1)
+            yield _PAUSE
         if not self._waiting():
             return self._fail_rx("No data. Is remote script running?")
 
-        length = self._read_byte()
+        length = yield _READ
         if length is None or length < MIN_FRAME or length > MAX_FRAME:
             return self._fail_rx("No length byte. Is remote script running?" if length is None else "Invalid frame length")
 
@@ -160,7 +150,7 @@ class uRemote:
             if self._elapsed(total_start) > self.wait_recv:
                 return self._fail_rx("Incomplete frame.")
             if self._waiting():
-                b = self._read_byte()
+                b = yield _READ
                 if b is None:
                     return self._fail_rx("Incomplete frame.")
                 payload.append(b)
@@ -172,42 +162,7 @@ class uRemote:
             elif self._elapsed(byte_start) > self.byte_timeout:
                 return self._fail_rx("Inter-byte timeout.")
             else:
-                self._pause(1)
-        return bytes(payload[PREAMBLE_LEN:])
-
-    async def _recv_bytes_async(self):
-        # Pybricks only (see call_async).
-        self._last_rx_error = None
-        start = self._ticks()
-        while self._elapsed(start) < self.wait_recv and not self._waiting():
-            await wait(0)
-        if not self._waiting():
-            return self._fail_rx("No data. Is remote script running?")
-
-        length = await self._read_byte_async()
-        if length is None or length < MIN_FRAME or length > MAX_FRAME:
-            return self._fail_rx("No length byte. Is remote script running?" if length is None else "Invalid frame length")
-
-        payload = bytearray()
-        total_start = byte_start = self._ticks()
-        pre = 0
-        while len(payload) < length:
-            if self._elapsed(total_start) > self.wait_recv:
-                return self._fail_rx("Incomplete frame.")
-            if self._waiting():
-                b = await self._read_byte_async()
-                if b is None:
-                    return self._fail_rx("Incomplete frame.")
-                payload.append(b)
-                if pre < PREAMBLE_LEN:
-                    if b != PREAMBLE[pre]:
-                        return self._fail_rx("Preamble mismatch.")
-                    pre += 1
-                byte_start = self._ticks()
-            elif self._elapsed(byte_start) > self.byte_timeout:
-                return self._fail_rx("Inter-byte timeout.")
-            else:
-                await wait(0)
+                yield _PAUSE
         return bytes(payload[PREAMBLE_LEN:])
 
     def _encode(self, status, cmd, *argv):
@@ -255,11 +210,8 @@ class uRemote:
         return status, cmd, decoded
 
     def _send_command(self, cmd, *data, status=STATUS_OK):
-        self._send_bytes(self._encode(status, cmd, *data))
-
-    async def _send_command_async(self, cmd, *data, status=STATUS_OK):
-        # UARTDevice.write must be awaited under run_task().
-        await self.uart.write(self._packet(self._encode(status, cmd, *data)))
+        # Sync write, used by the server side (process()).
+        self.uart.write(self._packet(self._encode(status, cmd, *data)))
 
     def _decode_command(self, b):
         if not b:
@@ -271,10 +223,64 @@ class uRemote:
             return STATUS_ERR, "", "decode error: " + str(e)
 
     def _recv_command(self):
-        return self._decode_command(self._recv_bytes())
+        return self._decode_command(self._drive_sync(self._recv_steps()))
 
-    async def _recv_command_async(self):
-        return self._decode_command(await self._recv_bytes_async())
+    def _exchange_steps(self, cmd, data):
+        yield (_WRITE, self._packet(self._encode(STATUS_OK, cmd, *data)))
+        b = yield from self._recv_steps()
+        return self._decode_command(b)
+
+    def _call_steps(self, cmd, data):
+        self.flush()
+        reply = yield from self._exchange_steps(cmd, data)
+        return self._finish_call(cmd, *reply)
+
+    def _drive_sync(self, steps):
+        # Run a step generator with blocking UART I/O.
+        try:
+            op = next(steps)
+            while True:
+                if op == _READ:
+                    b = self.uart.read(1)
+                    op = steps.send(b[0] if b else None)
+                elif op == _PAUSE:
+                    self._pause(1)
+                    op = steps.send(None)
+                else:
+                    self.uart.write(op[1])
+                    op = steps.send(None)
+        except StopIteration as e:
+            return e.args[0] if e.args else None
+
+    async def _drive_async(self, steps):
+        # Same as _drive_sync, but awaits Pybricks UART I/O so other tasks
+        # keep running. The lock stops two tasks interleaving transactions.
+        while self._async_busy:
+            await wait(0)
+        self._async_busy = True
+        try:
+            op = next(steps)
+            while True:
+                if op == _READ:
+                    b = await self.uart.read(1)
+                    op = steps.send(b[0] if b else None)
+                elif op == _PAUSE:
+                    await wait(0)
+                    op = steps.send(None)
+                else:
+                    await self.uart.write(op[1])
+                    op = steps.send(None)
+        except StopIteration as e:
+            return e.args[0] if e.args else None
+        finally:
+            self._async_busy = False
+
+    def _drive(self, steps):
+        # Auto-detect: inside Pybricks run_task()/multitask() return an
+        # awaitable, otherwise run to completion and return the result.
+        if _IS_PYBRICKS and run_task():
+            return self._drive_async(steps)
+        return self._drive_sync(steps)
 
     def _finish_call(self, cmd, status, reply_cmd, payload):
         if status != STATUS_OK or not reply_cmd:
@@ -287,6 +293,9 @@ class uRemote:
     def exchange(self, cmd, *data):
         """Send a command and return the raw reply tuple.
 
+        Works like ``call()``: inside ``run_task()`` / ``multitask()`` on
+        Pybricks it returns an awaitable, so use ``await ur.exchange(...)``.
+
         Args:
             cmd: Command name.
             *data: Values to send.
@@ -294,33 +303,34 @@ class uRemote:
         Returns:
             Tuple ``(status, reply_cmd, payload)`` without validation.
         """
-        self._require_sync_uart()
-        self._send_command(cmd, *data)
-        return self._recv_command()
+        return self._drive(self._exchange_steps(cmd, data))
 
     def call(self, cmd, *data):
         """Call a remote command and return its result.
+
+        Detects async use automatically: inside ``run_task()`` /
+        ``multitask()`` on Pybricks it returns an awaitable, so write
+        ``await ur.call(...)`` there. Everywhere else it blocks and returns
+        the result directly.
 
         Args:
             cmd: Command name (must match the reply command name).
             *data: Arguments passed to the remote handler.
 
         Returns:
-            ``None``, a scalar, or a tuple of values from the remote handler.
+            ``None``, a scalar, or a tuple of values from the remote handler
+            (or an awaitable for that result under ``run_task()``).
 
         Raises:
             uRemoteError: On transport, protocol, or remote handler errors.
         """
-        self._require_sync_uart()
-        self.flush()
-        self._send_command(cmd, *data)
-        return self._finish_call(cmd, *self._recv_command())
+        return self._drive(self._call_steps(cmd, data))
 
     async def call_async(self, cmd, *data):
         """Asynchronously call a remote command and return its result.
 
-        Pybricks only. Preferred when calling uRemote from multiple tasks under
-        ``multitask()`` / ``run_task()``. Same result semantics as ``call()``.
+        Pybricks only. Kept for compatibility: ``await ur.call(...)`` does
+        the same under ``run_task()`` / ``multitask()``.
 
         Raises:
             uRemoteError: On transport, protocol, or remote handler errors,
@@ -328,15 +338,7 @@ class uRemote:
         """
         if not _IS_PYBRICKS:
             raise uRemoteError("call_async is only supported on Pybricks")
-        while self._async_busy:
-            await wait(0)
-        self._async_busy = True
-        try:
-            self.flush()
-            await self._send_command_async(cmd, *data)
-            return self._finish_call(cmd, *(await self._recv_command_async()))
-        finally:
-            self._async_busy = False
+        return await self._drive_async(self._call_steps(cmd, data))
 
     def process(self):
         """Handle one incoming command and send a reply.
@@ -346,7 +348,7 @@ class uRemote:
 
         Returns immediately when the UART receive buffer is empty, so it is
         safe to call in a tight loop. Remains synchronous: ESP32 servers do
-        not need async when the Pybricks caller uses ``call_async()``.
+        not need async when the Pybricks caller awaits ``call()``.
         """
         if not self._waiting():
             return

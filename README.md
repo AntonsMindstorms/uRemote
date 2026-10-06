@@ -139,11 +139,11 @@ except uRemoteError as e:
   <img alt="Pybricks blocks using ur.call in one loop" src="docs/pybricks-blocks-sync-demo.png" width="520">
 </p>
 
-### Client (async): `call_async(cmd, *args)`
+### Client (async): `await call(cmd, *args)`
 
-Same return semantics as `call()`, but yields while waiting on UART so other Pybricks tasks can run under `multitask()` / `run_task()`. Complete request/reply transactions are serialized with a cooperative lock.
+`call()` detects async use by itself. Inside `run_task()` / `multitask()` on Pybricks it returns an awaitable that yields while waiting on UART, so other tasks keep running. Outside `run_task()` it blocks and returns the result, as above. Complete request/reply transactions are serialized with a cooperative lock.
 
-Under `run_task()`, switch method calls from sync `call` to `await` (`call_async`). Sync `call()` will not work there:
+Under `run_task()`, put `await` in front of `call` (the blocks dropdown switches `call` to `await`):
 
 <p align="center">
   <img alt="Pybricks blocks dropdown switching call to await" src="docs/change-call-into-await.png" width="420">
@@ -157,12 +157,12 @@ ur = uRemote(Port.A)
 
 async def telemetry():
     while True:
-        print(await ur.call_async('Kp'))
+        print(await ur.call('Kp'))
         await wait(0)
 
 async def motor_task():
     while True:
-        speed = await ur.call_async('motor')
+        speed = await ur.call('motor')
         await wait(0)
 
 async def main():
@@ -171,7 +171,7 @@ async def main():
 run_task(main())
 ```
 
-Use `call_async()` consistently from every task that shares the same `uRemote`. Do not mix with sync `call()` while multitasking. `call_async()` is Pybricks-only; the ESP32 server stays sync (`process()`). See [`examples/uremote_async/`](examples/uremote_async/).
+Every task that shares the same `uRemote` must `await` its calls. `call_async()` still works and does the same as `await call()`; it is Pybricks-only. The ESP32 server stays sync (`process()`). See [`examples/uremote_async/`](examples/uremote_async/).
 
 <p align="center">
   <img alt="Pybricks blocks using await call_async in two programs" src="docs/pybricks-blocks-async-demo.png" width="520">
