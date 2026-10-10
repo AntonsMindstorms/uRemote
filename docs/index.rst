@@ -10,7 +10,7 @@ uRemote is a small UART RPC library for pairing **Pybricks LEGO hubs** with **LM
 
 Typical setup: a Pybricks hub is the **client** (``call`` / ``call_async``) and an ESP32 running MicroPython or MicroBlocks is the **server** (``process``).
 
-For LMS-ESP32 boards running the BluePad32 uRemote firmware, ``library/bluepad_ur.py`` provides a Pybricks ``BluePad`` helper (gamepad, NeoPixels, servos, I2C, Bluetooth pairing) on top of ``uremote``.
+For LMS-ESP32 boards running the BluePad32 uRemote firmware, ``library/bluepad_ur.py`` provides a Pybricks ``BluePad`` helper (gamepad, NeoPixels, servos, I2C, Bluetooth pairing). It includes a Pybricks-only uRemote client, so ``uremote.py`` is not required.
 
 The wire format is a stripped-down version of the `UartRemote <https://github.com/AntonsMindstorms/UartRemote>`_ protocol.
 
@@ -326,7 +326,7 @@ bluepad_ur
 ~~~~~~~~~~
 
 Pybricks helper for LMS-ESP32 boards running the BluePad32 uRemote firmware.
-Upload ``library/bluepad_ur.py`` together with ``uremote.py``.
+Upload ``library/bluepad_ur.py`` only; it includes a Pybricks-only uRemote client.
 
 .. automodule:: bluepad_ur
    :members:
