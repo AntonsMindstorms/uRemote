@@ -2,10 +2,46 @@
 #  uRemote – unified MicroPython library
 #  Tested on Pybricks, LMS-ESP32 and OpenMV AE3
 # ============================================================
+#
+# HOW THIS FILE WORKS (read this before changing the transport code)
+#
+# One file runs on three kinds of boards:
+#   * Pybricks hubs: client. Inside run_task()/multitask() the UARTDevice
+#     read()/write() must be awaited; outside run_task() they block.
+#   * ESP32 / OpenMV (plain MicroPython): server (process()) or client.
+#     There is no run_task() and no async UART here, so everything blocks.
+#
+# MicroPython cannot write one function that is both blocking and awaitable.
+# Instead of keeping two copies of the frame protocol in sync, the protocol
+# is written ONCE as plain generators ("step generators"):
+#
+#   _recv_steps()    reads one frame. It does not touch the UART itself; it
+#   _call_steps()    yields a request and receives the answer:
+#                      yield _READ             -> receives one byte (or None)
+#                      yield _PAUSE            -> wait a moment, receives None
+#                      yield (_WRITE, bytes)   -> send bytes, receives None
+#
+# Two small drivers perform that I/O:
+#   _drive_sync()    blocking UART calls. Used on ESP32 and on Pybricks
+#                    outside run_task().
+#   _drive_async()   awaits the UART calls so other Pybricks tasks keep
+#                    running. Holds a cooperative lock (_async_busy) so two
+#                    tasks cannot interleave their request/reply frames.
+#
+# _drive() chooses between them: Pybricks AND run_task() is truthy -> async,
+# else sync. On ESP32 run_task is None and _IS_PYBRICKS is False, so the
+# check short-circuits and run_task() is never called.
+#
+# To add a feature that talks over the wire, write it as a step generator
+# and run it through _drive(); it then works in both modes for free.
+#
+# No silent failures: a call that returns an awaitable but is never awaited
+# does nothing at all, so _drive() remembers it (_unawaited) and raises a
+# uRemoteError that explains the fix on the next call.
 __author__ = "Anton Vanhoucke & Ste7an"
 __copyright__ = "Copyright 2024,2025,2026 AntonsMindstorms.com"
 __license__ = "GPL"
-__version__ = "1.3"
+__version__ = "1.4"
 __status__ = "Production"
 
 import __main__
@@ -69,6 +105,32 @@ def _unwrap_result(payload):
     return values[0] if len(values) == 1 else tuple(values)
 
 
+class _Awaitable:
+    """What call()/exchange() return inside run_task().
+
+    It wraps the real coroutine so that a forgotten ``await`` is self-explaining:
+    ``print(ur.call('add', 1, 2))`` shows a hint instead of an opaque
+    "<generator object>". Awaiting it behaves exactly like awaiting the
+    coroutine. MicroPython awaits through __iter__ (hence the alias); CPython,
+    used by the desktop tests, through __await__.
+    """
+
+    def __init__(self, coro, what):
+        self._coro = coro
+        self._what = what
+
+    def __iter__(self):
+        c = self._coro
+        return c.__await__() if hasattr(c, '__await__') else c
+
+    __await__ = __iter__
+
+    def __repr__(self):
+        return "<%s was multitasking. Use await %s to get data.>" % (self._what, self._what)
+
+    __str__ = __repr__
+
+
 class uRemote:
     """UART RPC client/server for Pybricks hubs and ESP32 boards.
     
@@ -88,6 +150,8 @@ class uRemote:
         self._last_rx_error = None
         # Cooperative lock so concurrent async tasks cannot interleave RPC transactions.
         self._async_busy = False
+        # True between handing out an awaitable and it starting to run.
+        self._unawaited = False
         if _IS_PYBRICKS:
             self._watch = StopWatch()
             if isinstance(port_or_uart, str):
@@ -137,30 +201,30 @@ class uRemote:
         while self._elapsed(start) < self.wait_recv and not self._waiting():
             yield _PAUSE
         if not self._waiting():
-            return self._fail_rx("No data. Is remote script running?")
+            return self._fail_rx("No data. Check wiring and baudrate, and that the remote script is running process().")
 
         length = yield _READ
         if length is None or length < MIN_FRAME or length > MAX_FRAME:
-            return self._fail_rx("No length byte. Is remote script running?" if length is None else "Invalid frame length")
+            return self._fail_rx("No length byte. Check wiring and that the remote script is running process()." if length is None else "Invalid frame length. Baudrate mismatch or other traffic on the UART?")
 
         payload = bytearray()
         total_start = byte_start = self._ticks()
         pre = 0
         while len(payload) < length:
             if self._elapsed(total_start) > self.wait_recv:
-                return self._fail_rx("Incomplete frame.")
+                return self._fail_rx("Incomplete frame. Check the cable, or raise wait_recv for slow remotes.")
             if self._waiting():
                 b = yield _READ
                 if b is None:
-                    return self._fail_rx("Incomplete frame.")
+                    return self._fail_rx("Incomplete frame. Check the cable, or raise wait_recv for slow remotes.")
                 payload.append(b)
                 if pre < PREAMBLE_LEN:
                     if b != PREAMBLE[pre]:
-                        return self._fail_rx("Preamble mismatch.")
+                        return self._fail_rx("Preamble mismatch. Baudrate differs, or something else is talking on this UART.")
                     pre += 1
                 byte_start = self._ticks()
             elif self._elapsed(byte_start) > self.byte_timeout:
-                return self._fail_rx("Inter-byte timeout.")
+                return self._fail_rx("Inter-byte timeout. Check the cable/connector, or raise ur.byte_timeout.")
             else:
                 yield _PAUSE
         return bytes(payload[PREAMBLE_LEN:])
@@ -255,6 +319,7 @@ class uRemote:
     async def _drive_async(self, steps):
         # Same as _drive_sync, but awaits Pybricks UART I/O so other tasks
         # keep running. The lock stops two tasks interleaving transactions.
+        self._unawaited = False  # we are running, so someone did await us
         while self._async_busy:
             await wait(0)
         self._async_busy = True
@@ -275,11 +340,20 @@ class uRemote:
         finally:
             self._async_busy = False
 
-    def _drive(self, steps):
+    def _drive(self, steps, what="call(...)"):
         # Auto-detect: inside Pybricks run_task()/multitask() return an
         # awaitable, otherwise run to completion and return the result.
         if _IS_PYBRICKS and run_task():
-            return self._drive_async(steps)
+            # A forgotten `await` leaves the previous coroutine unstarted:
+            # nothing was sent and nothing would ever tell the user. Catch it
+            # on the next call. Known limit: creating two calls before either
+            # has started (e.g. passing both to one gather-like helper) trips
+            # this too; start/await them one after another.
+            if self._unawaited:
+                self._unawaited = False
+                raise uRemoteError("Previous call() was not awaited. Under run_task() write: await ur.call(...)")
+            self._unawaited = True
+            return _Awaitable(self._drive_async(steps), what)
         return self._drive_sync(steps)
 
     def _finish_call(self, cmd, status, reply_cmd, payload):
@@ -303,7 +377,7 @@ class uRemote:
         Returns:
             Tuple ``(status, reply_cmd, payload)`` without validation.
         """
-        return self._drive(self._exchange_steps(cmd, data))
+        return self._drive(self._exchange_steps(cmd, data), "exchange(%r)" % cmd)
 
     def call(self, cmd, *data):
         """Call a remote command and return its result.
@@ -324,21 +398,7 @@ class uRemote:
         Raises:
             uRemoteError: On transport, protocol, or remote handler errors.
         """
-        return self._drive(self._call_steps(cmd, data))
-
-    async def call_async(self, cmd, *data):
-        """Asynchronously call a remote command and return its result.
-
-        Pybricks only. Kept for compatibility: ``await ur.call(...)`` does
-        the same under ``run_task()`` / ``multitask()``.
-
-        Raises:
-            uRemoteError: On transport, protocol, or remote handler errors,
-                or when used outside Pybricks.
-        """
-        if not _IS_PYBRICKS:
-            raise uRemoteError("call_async is only supported on Pybricks")
-        return await self._drive_async(self._call_steps(cmd, data))
+        return self._drive(self._call_steps(cmd, data), "call(%r)" % cmd)
 
     def process(self):
         """Handle one incoming command and send a reply.
@@ -349,7 +409,14 @@ class uRemote:
         Returns immediately when the UART receive buffer is empty, so it is
         safe to call in a tight loop. Remains synchronous: ESP32 servers do
         not need async when the Pybricks caller awaits ``call()``.
+
+        Raises:
+            uRemoteError: When called under Pybricks ``run_task()``.
         """
+        if _IS_PYBRICKS and run_task():
+            # The server loop reads the UART synchronously; under run_task()
+            # that read would return an unawaited handle and fail cryptically.
+            raise uRemoteError("process() blocks; run it outside run_task()")
         if not self._waiting():
             return
         status, cmd, data = self._recv_command()

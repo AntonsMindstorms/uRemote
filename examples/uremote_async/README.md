@@ -1,21 +1,22 @@
 # uRemote async example
 
-Use ``call_async()`` when multiple Pybricks tasks share
-one UART connection under ``multitask()`` / ``run_task()``. The wire protocol
-and ESP32 ``process()`` server are unchanged.
+Use ``await ur.call()`` when multiple Pybricks tasks share
+one UART connection under ``multitask()`` / ``run_task()``. ``call()`` detects
+``run_task()`` by itself. The wire protocol and ESP32 ``process()`` server are
+unchanged.
 
 Copy ``library/uremote.py`` to the hub as ``uremote.py``.
 
 ## Why async
 
-A sync ``call()`` blocks other tasks while waiting for the UART reply.
-``call_async()`` yields (``await uart.read/write`` on Pybricks) so other
-coroutines can run. A cooperative lock serializes each full request/reply so
-tasks do not steal each other's answers.
+Outside ``run_task()``, ``call()`` blocks other tasks while waiting for the UART
+reply. Inside ``run_task()`` it returns an awaitable that yields
+(``await uart.read/write`` on Pybricks) so other coroutines can run. A
+cooperative lock serializes each full request/reply so tasks do not steal each
+other's answers. ``await wait(0)`` between calls gives sibling tasks a turn.
 
-Do not mix ``call()`` and ``call_async()`` on the same instance while multitasking —
-the lock only covers the async path. Prefer ``call_async()`` consistently, and
-``await wait(0)`` between calls so sibling tasks get a turn.
+Every task sharing the instance must ``await`` its calls. If you forget, nothing
+is sent; uRemote raises "Previous call() was not awaited" on the next call.
 
 Under ``run_task()``, change the method dropdown from sync ``call`` to ``await``:
 
@@ -38,18 +39,18 @@ ur = uRemote(Port.C)
 
 async def telemetry():
     while True:
-        await ur.call_async(
+        await ur.call(
             "spike_data",
             round(prime_hub.imu.rotation(Axis.X)),
             round(prime_hub.imu.rotation(Axis.Y)),
             round(prime_hub.imu.rotation(Axis.Z)),
         )
-        print("kp", await ur.call_async("Kp"))
+        print("kp", await ur.call("Kp"))
         await wait(0)
 
 async def motor_task():
     while True:
-        print("motor", await ur.call_async("motor"))
+        print("motor", await ur.call("motor"))
         await wait(0)
 
 async def main():
@@ -57,10 +58,6 @@ async def main():
 
 run_task(main())
 ```
-
-<p align="center">
-  <img alt="Pybricks blocks with await call_async in two programs" src="../../docs/pybricks-blocks-async-demo.png" width="520">
-</p>
 
 ## ESP32 server
 
@@ -86,4 +83,4 @@ while True:
     i = (i + 1) % 1001
 ```
 
-``call_async()`` is Pybricks-only. ESP32 remotes stay on sync ``process()``.
+ESP32 remotes stay on sync ``process()``.

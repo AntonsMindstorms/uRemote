@@ -5,7 +5,7 @@
 
 uRemote is a small UART RPC library for pairing **Pybricks LEGO hubs** with **LMS-ESP32 / MicroBlocks** devices. One side defines plain functions; the other side calls them over serial.
 
-Typical setup: a Pybricks hub is the **client** (`call` / `call_async`) and an ESP32 running MicroPython or MicroBlocks is the **server** (`process`).
+Typical setup: a Pybricks hub is the **client** (`call` / `await call`) and an ESP32 running MicroPython or MicroBlocks is the **server** (`process`).
 
 The wire format is a stripped-down version of the [UARTRemote](https://github.com/scopeland-UARTRemote) protocol.
 
@@ -171,11 +171,32 @@ async def main():
 run_task(main())
 ```
 
-Every task that shares the same `uRemote` must `await` its calls. `call_async()` still works and does the same as `await call()`; it is Pybricks-only. The ESP32 server stays sync (`process()`). See [`examples/uremote_async/`](examples/uremote_async/).
+Every task that shares the same `uRemote` must `await` its calls. The ESP32 server stays sync (`process()`). See [`examples/uremote_async/`](examples/uremote_async/).
+
+Pybricks blocks equivalent: two programs run in parallel, and the one that talks to the ESP32 uses `await call`:
 
 <p align="center">
-  <img alt="Pybricks blocks using await call_async in two programs" src="docs/pybricks-blocks-async-demo.png" width="520">
+  <img alt="Pybricks blocks with a parallel task and an await call" src="docs/pybricks-blocks-multitask-demo.png" width="520">
 </p>
+
+If you forget the `await`, nothing is sent. uRemote catches that on the next call and raises `Previous call() was not awaited. Under run_task() write: await ur.call(...)`.
+
+`BluePad` (`library/bluepad_ur.py`) works the same way: its methods return results directly, or awaitables inside `run_task()` (`pad = await bp.gamepad()`). The module-level block helpers at the bottom of `bluepad_ur.py` are blocking only.
+
+### Troubleshooting
+
+| Error message | What to do |
+|---|---|
+| `No data. Check wiring and baudrate, and that the remote script is running process()` | Check the cable and port, that both sides use the same baudrate, and that the remote loop calls `ur.process()`. |
+| `Preamble mismatch` / `Invalid frame length` | Baudrate differs, or something else is talking on this UART. |
+| `Incomplete frame` / `Inter-byte timeout` | Check the cable/connector. Raise `wait_recv` or `ur.byte_timeout` for slow remotes. |
+| `Previous call() was not awaited` | Inside `run_task()` write `await ur.call(...)`. |
+| `process() blocks; run it outside run_task()` | Run the server loop in plain code, not inside `run_task()`. |
+| `<name>() function not found remotely` | Define a function with that name in the remote main program. |
+
+### Hardware examples
+
+[`examples/multitask%20and%20async/`](examples/multitask%20and%20async/) holds small, playful programs that double as the hardware release checks.
 
 ### Server: `process()`
 

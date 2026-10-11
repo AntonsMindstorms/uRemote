@@ -8,9 +8,9 @@ uRemote documentation
 
 uRemote is a small UART RPC library for pairing **Pybricks LEGO hubs** with **LMS-ESP32 / MicroBlocks** devices. One side defines plain functions; the other side calls them over serial.
 
-Typical setup: a Pybricks hub is the **client** (``call`` / ``call_async``) and an ESP32 running MicroPython or MicroBlocks is the **server** (``process``).
+Typical setup: a Pybricks hub is the **client** (``call`` / ``await call``) and an ESP32 running MicroPython or MicroBlocks is the **server** (``process``).
 
-For LMS-ESP32 boards running the BluePad32 uRemote firmware, ``library/bluepad_ur.py`` provides a Pybricks ``BluePad`` helper (gamepad, NeoPixels, servos, I2C, Bluetooth pairing). It includes a Pybricks-only uRemote client, so ``uremote.py`` is not required.
+For LMS-ESP32 boards running the BluePad32 uRemote firmware, ``library/bluepad_ur.py`` provides a Pybricks ``BluePad`` helper (gamepad, NeoPixels, servos, I2C, Bluetooth pairing). It embeds the uRemote client (generated from ``uremote.py`` by ``tools/sync_bluepad.py``), so ``uremote.py`` is not required. Its methods are awaitable under ``run_task()``.
 
 The wire format is a stripped-down version of the `UartRemote <https://github.com/AntonsMindstorms/UartRemote>`_ protocol.
 
@@ -148,15 +148,16 @@ Pybricks blocks equivalent (single sync loop):
    :alt: Pybricks blocks using ur.call in one loop
    :width: 520
 
-Client (async): ``call_async(cmd, *args)``
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+Client (async): ``await call(cmd, *args)``
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-Same result semantics as ``call()``, but yields while waiting on UART so other
-Pybricks tasks can run under ``multitask()`` / ``run_task()``. Complete
-request/reply transactions are serialized with a cooperative lock.
+``call()`` detects async use by itself. Inside ``run_task()`` /
+``multitask()`` on Pybricks it returns an awaitable that yields while waiting on
+UART, so other tasks keep running. Outside ``run_task()`` it blocks and returns
+the result. Complete request/reply transactions are serialized with a
+cooperative lock.
 
-Under ``run_task()``, switch method calls from sync ``call`` to ``await``
-(``call_async``). Sync ``call()`` will not work there:
+Under ``run_task()``, put ``await`` in front of ``call``:
 
 .. image:: change-call-into-await.png
    :alt: Pybricks blocks dropdown switching call to await
@@ -171,13 +172,13 @@ Under ``run_task()``, switch method calls from sync ``call`` to ``await``
 
    async def telemetry():
        while True:
-           value = await ur.call_async('Kp')
+           value = await ur.call('Kp')
            print(value)
            await wait(0)
 
    async def motor_task():
        while True:
-           speed = await ur.call_async('motor')
+           speed = await ur.call('motor')
            await wait(0)
 
    async def main():
@@ -185,20 +186,18 @@ Under ``run_task()``, switch method calls from sync ``call`` to ``await``
 
    run_task(main())
 
-Use ``call_async()`` consistently from every task that shares the same
-``uRemote`` instance. Do not mix with synchronous ``call()`` while multitasking
-— the lock only covers the async path. ``await wait(0)`` after a call gives
-sibling tasks a chance to acquire the lock.
+Pybricks blocks equivalent: two programs run in parallel, and the one that
+talks to the ESP32 uses ``await call``:
 
-``call_async()`` is Pybricks-only. The ESP32 server stays synchronous
+.. image:: pybricks-blocks-multitask-demo.png
+   :alt: Pybricks blocks with a parallel task and an await call
+   :width: 520
+
+Every task that shares the same ``uRemote`` instance must ``await`` its calls.
+A forgotten ``await`` sends nothing; uRemote raises "Previous call() was not
+awaited" on the next call. The ESP32 server stays synchronous
 (``process()``); the wire protocol is unchanged. See ``examples/uremote_async/``
 for a full pair.
-
-Pybricks blocks equivalent (two programs with ``await call_async``):
-
-.. image:: pybricks-blocks-async-demo.png
-   :alt: Pybricks blocks using await call_async in two programs
-   :width: 520
 
 Server: ``process()``
 ~~~~~~~~~~~~~~~~~~~~~
