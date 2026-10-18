@@ -440,7 +440,7 @@ def _rpc(steps_fn):
     """
     def method(self, *args, _steps=False, **kwargs):
         steps = steps_fn(self, *args, **kwargs)
-        return steps if _steps else self.ur._drive(steps, steps_fn.__name__ + "()")
+        return steps if _steps else self.ur._drive(steps, "BluePad call")
     try:
         method.__doc__ = steps_fn.__doc__  # keep docs; MicroPython can't set this
     except AttributeError:
