@@ -400,6 +400,14 @@ class uRemote:
         """
         return self._drive(self._call_steps(cmd, data), "call(%r)" % cmd)
 
+    def __getattr__(self, name):
+        # ur.foo(1, 2) is short for ur.call('foo', 1, 2). Only reached for
+        # names that are not real attributes; skip private/dunder names so
+        # runtime lookups (__iter__, __await__, ...) still fail normally.
+        if name[0] == '_':
+            raise AttributeError(name)
+        return lambda *data: self.call(name, *data)
+
     def process(self):
         """Handle one incoming command and send a reply.
 

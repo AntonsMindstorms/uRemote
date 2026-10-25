@@ -376,6 +376,14 @@ class uRemote:
         """
         return self._drive(self._call_steps(cmd, data), "call(%r)" % cmd)
 
+    def __getattr__(self, name):
+        # ur.foo(1, 2) is short for ur.call('foo', 1, 2). Only reached for
+        # names that are not real attributes; skip private/dunder names so
+        # runtime lookups (__iter__, __await__, ...) still fail normally.
+        if name[0] == '_':
+            raise AttributeError(name)
+        return lambda *data: self.call(name, *data)
+
     def process(self):
         """Handle one incoming command and send a reply.
 
@@ -438,9 +446,12 @@ def _rpc(steps_fn):
     Composite methods reuse other methods without driving them twice by
     passing ``_steps=True``, which returns the raw generator for ``yield from``.
     """
+    # Some MicroPython builds (e.g. EV3) give generator functions no __name__.
+    what = getattr(steps_fn, "__name__", "BluePad method") + "()"
+
     def method(self, *args, _steps=False, **kwargs):
         steps = steps_fn(self, *args, **kwargs)
-        return steps if _steps else self.ur._drive(steps, steps_fn.__name__ + "()")
+        return steps if _steps else self.ur._drive(steps, what)
     try:
         method.__doc__ = steps_fn.__doc__  # keep docs; MicroPython can't set this
     except AttributeError:

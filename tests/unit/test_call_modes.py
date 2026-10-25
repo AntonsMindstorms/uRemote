@@ -85,3 +85,32 @@ def test_unawaited_result_explains_itself_when_printed(monkeypatch):
         assert await pending == 3
 
     asyncio.run(main())
+
+
+def test_attribute_call_is_shorthand_for_call():
+    client = make_client(FakeUART)
+    assert client.add(2, 3) == 5
+    sent = []
+    client.uart.write = lambda frame, w=client.uart.write: (sent.append(frame), w(frame))[1]
+    client.add(1, 2)
+    client.call("add", 1, 2)
+    assert sent[0] == sent[1]
+
+
+def test_attribute_call_leaves_real_and_private_names_alone():
+    client = make_client(FakeUART)
+    assert client.flush.__func__ is uremote.uRemote.flush
+    with pytest.raises(AttributeError):
+        client._missing
+    with pytest.raises(AttributeError):
+        client.__await__
+
+
+def test_attribute_call_is_awaitable_under_run_task(monkeypatch):
+    client = make_client(AsyncFakeUART)
+    pretend_pybricks_run_task(monkeypatch, client=client)
+
+    async def main():
+        assert await client.add(4, 5) == 9
+
+    asyncio.run(main())

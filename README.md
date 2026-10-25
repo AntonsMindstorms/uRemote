@@ -135,6 +135,18 @@ except uRemoteError as e:
 
 `call()` checks that the reply command matches the request and that the status byte is `0`. You never handle status bytes or command suffixes yourself.
 
+#### Shorthand: `ur.my_function(*args)`
+
+Any name that is not a `uRemote` method works as a remote call, so these are the same:
+
+```python
+x, y, pressed = ur.joy()
+x, y, pressed = ur.call('joy')
+ur.led(-1)                          # same as ur.call('led', -1)
+```
+
+Under `run_task()` write `await ur.joy()`. Names that `uRemote` already uses (`call`, `exchange`, `process`, `flush`, `uart`, `wait_recv`, `byte_timeout`) and names starting with `_` are not forwarded; use `ur.call('flush')` for those. A typo such as `ur.jyo()` fails when called, with the remote's "function not found" error.
+
 <p align="center">
   <img alt="Pybricks blocks using ur.call in one loop" src="docs/pybricks-blocks-sync-demo.png" width="520">
 </p>
